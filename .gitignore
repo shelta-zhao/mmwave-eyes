@@ -1,3 +1,10 @@
+# radar data
+*.jpg
+*.png
+*.bin
+*.csv
+*.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
