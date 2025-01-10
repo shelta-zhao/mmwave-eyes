@@ -8,6 +8,209 @@
 import os
 import yaml
 import json
+import numpy as np
+from datetime import datetime, timezone, timedelta
+
+
+def generate_params(config_path, radar_type):
+    """
+    Generates the configuration parameters for the mmWave devices based on the JSON files in the config folder.
+    
+    Parameters:
+        config_path (str): Path to the folder containing JSON files from mmWave Studio.
+        radar_type (str): The type of radar device used in the experiment.
+    
+    Returns:
+        dict: A dictionary containing the configuration parameters for the mmWave devices.
+    """
+
+    # Validate the JSON files
+    json_params, json_valid = validate_json(config_path)
+
+    # Return {} if the JSON files are not valid
+    if not json_valid:
+        return {}
+    
+    # Basic configuration parameters
+    params = {}
+    params['dataPath'] = config_path
+    params['radarType'] = radar_type
+    params['generateDate'] = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Radar configuration parameters    
+    TxChannelEnabled = [
+        np.argmax([
+            json_params['DevConfig'][i + 1]['Chirp'][iconfig + 1]['Tx0Enable'],
+            json_params['DevConfig'][i + 1]['Chirp'][iconfig + 1]['Tx1Enable'],
+            json_params['DevConfig'][i + 1]['Chirp'][iconfig + 1]['Tx2Enable']
+        ]) for i in range(json_params['NumDevices'])
+        for iconfig in range(json_params['DevConfig'][i + 1]['NumChirps'])
+    ]
+    params['iqSwap'] = json_params['DevConfig'][1]['DataFormat']['IQSwap']
+    params['chInterleave'] = json_params['DevConfig'][1]['DataFormat']['chInterleave']
+    params['numLane'] = json_params['DevConfig'][1]['DataFormat']['numLane']
+    params['numADCSample'] = json_params['DevConfig'][1]['Profile'][0]['NumSamples']
+    params['AdcOneSampleSize'] = json_params['DevConfig'][1]['DataFormat']['gAdcOneSampleSize']
+    params['adcSampleRate'] = json_params['DevConfig'][1]['Profile'][0]['SamplingRate'] * 1e3
+    params['startFreqConst'] = json_params['DevConfig'][1]['Profile'][0]['StartFreq'] * 1e9
+    params['chirpSlope'] = json_params['DevConfig'][1]['Profile'][0]['FreqSlope'] * 1e12
+    params['chirpIdleTime'] = json_params['DevConfig'][1]['Profile'][0]['IdleTime'] * 1e-6
+    params['chirpRampEndTime'] = json_params['DevConfig'][1]['Profile'][0]['RampEndTime'] * 1e-6
+    params['adcStartTimeConst'] = json_params['DevConfig'][1]['Profile'][0]['AdcStartTime'] * 1e-6
+    params['frameCount'] = json_params['DevConfig'][1]['FrameConfig']['NumFrames']
+    params['numChirpsInLoop'] = json_params['DevConfig'][1]['NumChirps']
+    params['nchirp_loops'] = json_params['DevConfig'][1]['FrameConfig']['NumChirpLoops']
+    params['framePeriodicty'] = json_params['DevConfig'][1]['FrameConfig']['Periodicity'] * 1e-3
+    params['NumDevices'] = json_params['NumDevices']
+    params['numTxAnt'] = len(TxChannelEnabled)
+    params['TxToEnable'] = TxChannelEnabled
+    params['numRxToEnable'] = len(json_params['RxToEnable'])
+
+    # Radar TX/RX parameters
+    if radar_type == "IWR6843ISK-ODS":
+        TX_position_azi = [0, 2, 2]
+        TX_position_ele = [2, 2, 0]
+        RX_position_azi = [0, 0, 1, 1]
+        RX_position_ele = [1, 0, 0, 1]
+    else:
+        TX_position_azi = [0, 2, 4]
+        TX_position_ele = [0, 1, 0]
+        RX_position_azi = [0, 1, 2, 3]
+        RX_position_ele = [0, 0, 0, 0]
+    D = np.array([[rx_azi + tx_azi, rx_ele + tx_ele] for tx_azi, tx_ele in zip(TX_position_azi, TX_position_ele) for rx_azi, rx_ele in zip(RX_position_azi, RX_position_ele)])
+
+    # Derived parameters
+    speed_of_light = 3e8
+    scale_factor = [x * 4 for x in [0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625, 0.001953125, 0.0009765625, 0.00048828125]]
+
+    # Chirp
+    chirp_ramp_time = params['numADCSample'] / params['adcSampleRate']
+    chirp_bandwidth = params['chirpSlope'] * chirp_ramp_time
+    chirp_interval = params['chirpRampEndTime'] + params['chirpIdleTime']
+    carrier_frequency = params['startFreqConst'] + (params['adcStartTimeConst'] + chirp_ramp_time / 2) * params['chirpSlope']
+    lambda_ = speed_of_light / carrier_frequency
+    data_size_one_chirp = params['AdcOneSampleSize'] * params['numADCSample'] * params['numRxToEnable']
+    data_size_one_frame = data_size_one_chirp * params['numChirpsInLoop'] * params['nchirp_loops']
+
+    # MIMO
+    num_sample_per_chirp = round(chirp_ramp_time * params['adcSampleRate'])
+    num_chirps_per_frame = params['nchirp_loops'] * params['numChirpsInLoop']
+    num_chirps_per_vir_ant = params['nchirp_loops']
+    num_virtual_rx_ant = len(params['TxToEnable']) * params['numRxToEnable']
+
+    # FFT
+    range_fft_size = 2 ** (int(np.ceil(np.log2(num_sample_per_chirp))))
+    range_resolution = speed_of_light / 2 / chirp_bandwidth
+    range_bin_size = range_resolution * num_sample_per_chirp / range_fft_size
+    max_range = speed_of_light * params['adcSampleRate'] * chirp_ramp_time / (2 * 2 * chirp_bandwidth)
+    doppler_fft_size = 2 ** (int(np.ceil(np.log2(params['nchirp_loops']))))
+    velocity_resolution = lambda_ / (2 * params['nchirp_loops'] * chirp_interval * params['numTxAnt'])
+    velocity_bin_size = velocity_resolution * num_chirps_per_vir_ant / doppler_fft_size
+    maximum_velocity = lambda_ / (chirp_interval * 4)
+
+    # read data parameters
+    read_data_params = {
+        'enable': 1,
+        'iqSwap': params['iqSwap'],
+        'numLane': params['numLane'],
+        'chInterleave': params['chInterleave'],
+        'dataSizeOneFrame': data_size_one_frame,
+        'numAdcSamplePerChirp': num_sample_per_chirp,
+        'numChirpsPerFrame': num_chirps_per_frame,
+        'numTxForMIMO': len(params['TxToEnable']),
+        'numRxForMIMO': params['numRxToEnable']
+    }
+
+    # range FFT parameters
+    range_proc_params = {
+        'enable': 1,
+        'radarPlatform': radar_type,
+        'numAntenna': num_virtual_rx_ant,
+        'numAdcSamplePerChirp': num_sample_per_chirp,
+        'rangeFFTSize': range_fft_size,
+        'rangeBinSize': range_bin_size,
+        'rangeResolution': range_resolution,
+        'maxRange': max_range,
+        'dcOffsetCompEnable': 1,
+        'rangeWindowEnable': 1,
+        'rangeWindowCoeff': np.hanning(num_sample_per_chirp)[:num_sample_per_chirp // 2],
+        'scaleFactorRange': scale_factor[int(np.log2(range_fft_size)) - 4],
+        'FFTOutScaleOn': 0
+    }
+
+    # Doppler FFT parameters
+    doppler_proc_params = {
+        'enable': 1,
+        'numAntenna': num_virtual_rx_ant,
+        'numDopplerLines': range_fft_size,
+        'dopplerFFTSize': doppler_fft_size,
+        'velocityBinSize': velocity_bin_size,
+        'velocityResolution': velocity_resolution,
+        'maximumVelocity': maximum_velocity,
+        'numChirpsPerVirAnt': num_chirps_per_vir_ant,
+        'dopplerWindowEnable': 0,
+        'dopplerWindowCoeff': np.hanning(num_chirps_per_vir_ant)[:(num_chirps_per_vir_ant + 1) // 2],
+        'scaleFactorDoppler': scale_factor[int(np.log2(doppler_fft_size)) - 4],
+        'FFTOutScaleOn': 0,
+        'clutterRemove': 1
+    }
+
+    # CFAR-CASO parameters
+    cfar_caso_params = {
+        'enable': 1,
+        'detectMethod': 1,
+        'numAntenna': num_virtual_rx_ant,
+        'refWinSize': [5, 3],
+        'guardWinSize': [3, 2],
+        'K0': [5, 4],
+        'maxEnable': 0,
+        'ratio_OS': 0.65,
+        'rangeBinSize': range_bin_size,
+        'velocityBinSize': velocity_bin_size,
+        'dopplerFFTSize': doppler_fft_size,
+        'powerThre': 0,
+        'discardCellLeft': 0,
+        'discardCellRight': 0,
+        'numRxAnt': params['numRxToEnable'],
+        'TDM_MIMO_numTX': params['numTxAnt'],
+        'minDisApplyVmaxExtend': 10,
+        'applyVmaxExtend': 0,
+        'startFreq': params['startFreqConst'],
+        'chirpSlope': params['chirpSlope'],
+        'numADCSample': params['numADCSample'],
+        'adcSampleRate': params['adcSampleRate'],
+        'adcStartTimeConst': params['adcStartTimeConst']
+    }
+
+    # DOA parameters
+    doa_params = {
+        'enable': 1,
+        'D': D,
+        'DOAFFTSize': 180,
+        'numAntenna': num_virtual_rx_ant,
+        'antenna_DesignFreq': params['startFreqConst'],
+        'antPos': np.arange(num_virtual_rx_ant),
+        'antDis': 0.5 * carrier_frequency / params['startFreqConst'],
+        'method': 1,
+        'angles_DOA_azi': [-80, 80],
+        'angles_DOA_ele': [-80, 80] if radar_type == "IWR6843ISK-ODS" else [-20, 20],
+        'gamma': 10 ** (0.2 / 10),
+        'sidelobeLevel_dB_azim': 1,
+        'sidelobeLevel_dB_elev': 0,
+        'dopplerFFTSize': doppler_fft_size
+    }
+
+    # update parameters
+    params.update({
+        'readDataParams': read_data_params,
+        'rangeProcParams': range_proc_params,
+        'dopplerProcParams': doppler_proc_params,
+        'CFARCASOParams': cfar_caso_params,
+        'doaParams': doa_params
+    })
+
+    # return the parameters
+    return params
 
 
 def validate_json(config_path):
@@ -48,10 +251,10 @@ def validate_json(config_path):
     json_valid = checkout_json(setup_json, mmwave_json)
 
     # Parse the JSON files
-    params = parse_json(mmwave_json)
-    params['mmWaveDevice'] = setup_json.get('mmWaveDevice')
+    json_params = parse_json(mmwave_json)
+    json_params['mmWaveDevice'] = setup_json.get('mmWaveDevice')
 
-    return params, json_valid
+    return json_params, json_valid
 
 
 def checkout_json(setup_json, mmwave_json):
@@ -347,15 +550,13 @@ def parse_json(mmwave_json):
 
 if __name__ == "__main__":
     
-    # Validate the JSON files
+    # Generate parameters for the JSON files
     with open("data2parse.yaml", "r") as file:
         data = yaml.safe_load(file)
     config_path = os.path.join("rawData/configs", data["config"])
-    params, json_valid = validate_json(config_path)
+    params = generate_params(config_path, data['radar'])
 
-    if json_valid:
-        print("JSON files are valid.")
-        print(json.dumps(params, indent=4, sort_keys=True))
+    if not params:
+        print("Invalid JSON files")
     else:
-        print("JSON files are invalid.")
-        print(json.dumps(params, indent=4, sort_keys=True))
+        print(params['doaParams'])
