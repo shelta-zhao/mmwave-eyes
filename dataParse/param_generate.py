@@ -48,7 +48,7 @@ def validate_json(config_path):
     json_valid = checkout_json(setup_json, mmwave_json)
 
     # Parse the JSON files
-    # params = parse_json(mmwave_json)
+    params = parse_json(mmwave_json)
     params['mmWaveDevice'] = setup_json.get('mmWaveDevice')
 
     return params, json_valid
@@ -95,7 +95,7 @@ def checkout_json(setup_json, mmwave_json):
 
     # Validate the capture configuration
     lane_enable = mmwave_json.get("mmWaveDevices", {})[0].get("rawDataCaptureConfig", {}).get("rlDevLaneEnable_t", {}).get("laneEn")
-    num_lane = bin(int(lane_enable, 16)).count("1")if lane_enable else 0
+    num_lane = bin(int(lane_enable, 16)).count("1") if lane_enable else 0
     ch_interleave = mmwave_json.get("mmWaveDevices", {})[0].get("rawDataCaptureConfig", {}).get("rlDevDataFmtCfg_t", {}).get("chInterleave")
 
     if mmwave_device in {"awr1443", "iwr1443", "awr1243", "iwr1243"}:
@@ -158,89 +158,89 @@ def parse_json(mmwave_json):
                 RxToEnable.append((4 * (DevId - 1)) + rxChannel)
 
         # Profile Configuration
-        profiles = deviceConfig["rfConfig"]["rlProfiles"]
-        Params["DevConfig"][DevId]["NumProfiles"] = len(profiles)
-        Params["DevConfig"][DevId]["Profile"] = []
+        Params.setdefault('DevConfig', {})[DevId] = {}
+        Params['DevConfig'][DevId]['NumProfiles'] = len(MmWaveDevicesConfig[count]['rfConfig']['rlProfiles'])
+        NumChirpBlocks = len(MmWaveDevicesConfig[count]['rfConfig']['rlChirps'])
+        Profiles = MmWaveDevicesConfig[count]['rfConfig']['rlProfiles']
+        Chirps = MmWaveDevicesConfig[count]['rfConfig']['rlChirps']
 
-        for profile in profiles:
-            profile_cfg = profile["rlProfileCfg_t"]
-            profile_dict = {
-                "ProfileId": profile_cfg["profileId"],
-                "StartFreq": profile_cfg["startFreqConst_GHz"],
-                "FreqSlope": profile_cfg["freqSlopeConst_MHz_usec"],
-                "IdleTime": profile_cfg["idleTimeConst_usec"],
-                "AdcStartTime": profile_cfg["adcStartTimeConst_usec"],
-                "RampEndTime": profile_cfg["rampEndTime_usec"],
-                "TxStartTime": profile_cfg["txStartTime_usec"],
-                "RxGain": int(profile_cfg["rxGain_dB"][2:], 16),
-                "NumSamples": profile_cfg["numAdcSamples"],
-                "SamplingRate": profile_cfg["digOutSampleRate"],
-                "HpfCornerFreq1": profile_cfg["hpfCornerFreq1"],
-                "HpfCornerFreq2": profile_cfg["hpfCornerFreq2"],
-                "Tx0PhaseShift": (int(profile_cfg["txPhaseShifter"][2:], 16) & 255) / 4 * 5.625,
-                "Tx1PhaseShift": ((int(profile_cfg["txPhaseShifter"][2:], 16) >> 8) & 255) / 4 * 5.625,
-                "Tx2PhaseShift": ((int(profile_cfg["txPhaseShifter"][2:], 16) >> 16) & 255) / 4 * 5.625,
-                "Tx0OutPowerBackOff": int(profile_cfg["txOutPowerBackoffCode"][2:], 16) & 255,
-                "Tx1OutPowerBackOff": (int(profile_cfg["txOutPowerBackoffCode"][2:], 16) >> 8) & 255,
-                "Tx2OutPowerBackOff": (int(profile_cfg["txOutPowerBackoffCode"][2:], 16) >> 16) & 255,
+        for ProfileCount in range(Params['DevConfig'][DevId]['NumProfiles']):
+            profile = Profiles[ProfileCount]['rlProfileCfg_t']
+            Params['DevConfig'][DevId].setdefault('Profile', {})[ProfileCount] = {
+                'ProfileId': profile['profileId'],
+                'StartFreq': profile['startFreqConst_GHz'],
+                'FreqSlope': profile['freqSlopeConst_MHz_usec'],
+                'IdleTime': profile['idleTimeConst_usec'],
+                'AdcStartTime': profile['adcStartTimeConst_usec'],
+                'RampEndTime': profile['rampEndTime_usec'],
+                'TxStartTime': profile['txStartTime_usec'],
+                'RxGain': int(profile['rxGain_dB'][2:], 16),
+                'NumSamples': profile['numAdcSamples'],
+                'SamplingRate': profile['digOutSampleRate'],
+                'HpfCornerFreq1': profile['hpfCornerFreq1'],
+                'HpfCornerFreq2': profile['hpfCornerFreq2'],
+                'Tx0PhaseShift': (int(profile['txPhaseShifter'][2:], 16) & 255) / 4 * 5.625,
+                'Tx1PhaseShift': ((int(profile['txPhaseShifter'][2:], 16) >> 8) & 255) / 4 * 5.625,
+                'Tx2PhaseShift': ((int(profile['txPhaseShifter'][2:], 16) >> 16) & 255) / 4 * 5.625,
+                'Tx0OutPowerBackOff': int(profile['txOutPowerBackoffCode'][2:], 16) & 255,
+                'Tx1OutPowerBackOff': (int(profile['txOutPowerBackoffCode'][2:], 16) >> 8) & 255,
+                'Tx2OutPowerBackOff': (int(profile['txOutPowerBackoffCode'][2:], 16) >> 16) & 255
             }
-            Params["DevConfig"][DevId]["Profile"].append(profile_dict)
 
         # Chirp Configuration
-        chirps = deviceConfig["rfConfig"]["rlChirps"]
-        Params["DevConfig"][DevId]["NumChirps"] = 0
-        Params["DevConfig"][DevId]["Chirp"] = {}
-
-        for chirp in chirps:
-            chirp_cfg = chirp["rlChirpCfg_t"]
-            start_idx = chirp_cfg["chirpStartIdx"] + 1
-            end_idx = chirp_cfg["chirpEndIdx"] + 1
-
-            for chirp_id in range(start_idx, end_idx + 1):
-                Params["DevConfig"][DevId]["Chirp"][chirp_id] = {
-                    "ChirpIdx": chirp_id,
-                    "ProfileId": chirp_cfg["profileId"],
-                    "StartFreqVar": chirp_cfg["startFreqVar_MHz"],
-                    "FreqSlopeVar": chirp_cfg["freqSlopeVar_KHz_usec"],
-                    "IdleTimeVar": chirp_cfg["idleTimeVar_usec"],
-                    "AdcStartTime": chirp_cfg["adcStartTimeVar_usec"],
-                    "Tx0Enable": int(chirp_cfg["txEnable"][2:], 16) & 1,
-                    "Tx1Enable": (int(chirp_cfg["txEnable"][2:], 16) >> 1) & 1,
-                    "Tx2Enable": (int(chirp_cfg["txEnable"][2:], 16) >> 2) & 1,
+        Params['DevConfig'][DevId]['NumChirps'] = 0
+        for ChirpCount in range(NumChirpBlocks):
+            Params['DevConfig'][DevId]['NumChirps'] += (Chirps[ChirpCount]['rlChirpCfg_t']['chirpEndIdx'] - Chirps[ChirpCount]['rlChirpCfg_t']['chirpStartIdx']) + 1
+            for ChirpId in range(Chirps[ChirpCount]['rlChirpCfg_t']['chirpStartIdx'] + 1, Chirps[ChirpCount]['rlChirpCfg_t']['chirpEndIdx'] + 2):
+                chirp = Chirps[ChirpCount]['rlChirpCfg_t']
+                Params['DevConfig'][DevId].setdefault('Chirp', {})[ChirpId] = {
+                    'ChirpIdx': ChirpId,
+                    'ProfileId': chirp['profileId'],
+                    'StartFreqVar': chirp['startFreqVar_MHz'],
+                    'FreqSlopeVar': chirp['freqSlopeVar_KHz_usec'],
+                    'IdleTimeVar': chirp['idleTimeVar_usec'],
+                    'AdcStartTime': chirp['adcStartTimeVar_usec'],
+                    'Tx0Enable': bool(int(chirp['txEnable'][2:], 16) & 1),
+                    'Tx1Enable': bool(int(chirp['txEnable'][2:], 16) & 2),
+                    'Tx2Enable': bool(int(chirp['txEnable'][2:], 16) & 4)
                 }
 
         # Configure the burst profile mappings (BPM) for the device
-        NumBpmBlocks = len(deviceConfig["rfConfig"]["rlBpmChirps"])
-        BpmConfig = deviceConfig["rfConfig"]["rlBpmChirps"]
+        NumBpmBlocks = len(MmWaveDevicesConfig[count]['rfConfig']['rlBpmChirps'])
+        BpmConfig = MmWaveDevicesConfig[count]['rfConfig']['rlBpmChirps']
         for BpmCount in range(NumBpmBlocks):
-            for ChirpId in range(BpmConfig[BpmCount]["rlBpmChirpCfg_t"]["chirpStartIdx"] + 1, BpmConfig[BpmCount]["rlBpmChirpCfg_t"]["chirpEndIdx"] + 1):
-                bpm_values = int(BpmConfig[BpmCount]["rlBpmChirpCfg_t"]["constBpmVal"][2:], 16)
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx0OffBpmVal"] = (bpm_values >> 0) & 1
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx0OnBpmVal"] = (bpm_values >> 1) & 1
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx1OffBpmVal"] = (bpm_values >> 2) & 1
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx1OnBpmVal"] = (bpm_values >> 3) & 1
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx2OffBpmVal"] = (bpm_values >> 4) & 1
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx2OnBpmVal"] = (bpm_values >> 5) & 1
+            for ChirpId in range(BpmConfig[BpmCount]['rlBpmChirpCfg_t']['chirpStartIdx'] + 1, BpmConfig[BpmCount]['rlBpmChirpCfg_t']['chirpEndIdx'] + 2):
+                bpm = BpmConfig[BpmCount]['rlBpmChirpCfg_t']
+                Params['DevConfig'][DevId]['Chirp'][ChirpId].update({
+                    'Tx0OffBpmVal': bool(int(bpm['constBpmVal'][2:], 16) & 1),
+                    'Tx0OnBpmVal': bool(int(bpm['constBpmVal'][2:], 16) & 2),
+                    'Tx1OffBpmVal': bool(int(bpm['constBpmVal'][2:], 16) & 4),
+                    'Tx1OnBpmVal': bool(int(bpm['constBpmVal'][2:], 16) & 8),
+                    'Tx2OffBpmVal': bool(int(bpm['constBpmVal'][2:], 16) & 16),
+                    'Tx2OnBpmVal': bool(int(bpm['constBpmVal'][2:], 16) & 32)
+                })
 
         # Phase shift configuration
-        NumPhaseShiftBlocks = len(deviceConfig["rfConfig"]["rlRfPhaseShiftCfgs"])
-        PhaseShiftConfig = deviceConfig["rfConfig"]["rlRfPhaseShiftCfgs"]
+        NumPhaseShiftBlocks = len(MmWaveDevicesConfig[count]['rfConfig']['rlRfPhaseShiftCfgs'])
+        PhaseShiftConfig = MmWaveDevicesConfig[count]['rfConfig']['rlRfPhaseShiftCfgs']
         for PhaseShiftCount in range(NumPhaseShiftBlocks):
-            for ChirpId in range(PhaseShiftConfig[PhaseShiftCount]["rlRfPhaseShiftCfg_t"]["chirpStartIdx"] + 1,
-                                 PhaseShiftConfig[PhaseShiftCount]["rlRfPhaseShiftCfg_t"]["chirpEndIdx"] + 1):
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx0PhaseShift"] = PhaseShiftConfig[PhaseShiftCount]["rlRfPhaseShiftCfg_t"]["tx0PhaseShift"] * 5.625
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx1PhaseShift"] = PhaseShiftConfig[PhaseShiftCount]["rlRfPhaseShiftCfg_t"]["tx1PhaseShift"] * 5.625
-                Params["DevConfig"][DevId]["Chirp"][ChirpId]["Tx2PhaseShift"] = PhaseShiftConfig[PhaseShiftCount]["rlRfPhaseShiftCfg_t"]["tx2PhaseShift"] * 5.625
-
+            for ChirpId in range(PhaseShiftConfig[PhaseShiftCount]['rlRfPhaseShiftCfg_t']['chirpStartIdx'] + 1, PhaseShiftConfig[PhaseShiftCount]['rlRfPhaseShiftCfg_t']['chirpEndIdx'] + 2):
+                phase_shift = PhaseShiftConfig[PhaseShiftCount]['rlRfPhaseShiftCfg_t']
+                Params['DevConfig'][DevId]['Chirp'][ChirpId].update({
+                    'Tx0PhaseShift': phase_shift['tx0PhaseShift'] * 5.625,
+                    'Tx1PhaseShift': phase_shift['tx1PhaseShift'] * 5.625,
+                    'Tx2PhaseShift': phase_shift['tx2PhaseShift'] * 5.625
+                })
+        
         # Data format configuration
-        AdcFormatConfig = deviceConfig["rfConfig"]["rlAdcOutCfg_t"]["fmt"]
-        Params["DevConfig"][DevId]["DataFormat"] = {
-            "NumAdcBits": AdcFormatConfig["b2AdcBits"],
-            "Format": AdcFormatConfig["b2AdcOutFmt"],
-            "ReductionFactor": AdcFormatConfig["b8FullScaleReducFctr"],
-            "IQSwap": deviceConfig["rawDataCaptureConfig"]["rlDevDataFmtCfg_t"]["iqSwapSel"],
-            "chInterleave": deviceConfig["rawDataCaptureConfig"]["rlDevDataFmtCfg_t"]["chInterleave"],
-            "numLane": numberOfEnabledChan(int(deviceConfig["rawDataCaptureConfig"]["rlDevLaneEnable_t"]["laneEn"][2:], 16))
+        AdcFormatConfig = MmWaveDevicesConfig[count]['rfConfig']['rlAdcOutCfg_t']['fmt']
+        Params['DevConfig'][DevId]['DataFormat'] = {
+            'NumAdcBits': AdcFormatConfig['b2AdcBits'],
+            'Format': AdcFormatConfig['b2AdcOutFmt'],
+            'ReductionFactor': AdcFormatConfig['b8FullScaleReducFctr'],
+            'IQSwap': MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevDataFmtCfg_t']['iqSwapSel'],
+            'chInterleave': MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevDataFmtCfg_t']['chInterleave'],
+            'numLane': bin(int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevLaneEnable_t']['laneEn'][2:], 16)).count('1')
         }
 
         if Params["DevConfig"][DevId]["DataFormat"]["NumAdcBits"] == 2:
@@ -252,49 +252,97 @@ def parse_json(mmwave_json):
                 print("Error: unsupported ADC dataFmt")
         else:
             print(f"Error: unsupported ADC bits ({Params['DevConfig'][DevId]['DataFormat']['NumAdcBits']})")
-
         Params["DevConfig"][DevId]["DataFormat"]["gAdcOneSampleSize"] = gAdcOneSampleSize
 
         # Data path configuration
-        DataPathConfig = deviceConfig["rawDataCaptureConfig"]["rlDevDataPathCfg_t"]
-        Params["DevConfig"][DevId]["DataPath"] = {
-            "Interface": DataPathConfig["intfSel"],
-            "Packet0": int(DataPathConfig["transferFmtPkt0"][2:], 16),
-            "Packet1": int(DataPathConfig["transferFmtPkt1"][2:], 16),
-            "CqConfig": DataPathConfig["cqConfig"],
-            "Cq0TransSize": DataPathConfig["cq0TransSize"],
-            "Cq1TransSize": DataPathConfig["cq1TransSize"],
-            "Cq2TransSize": DataPathConfig["cq2TransSize"]
+        DataPathConfig = MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevDataPathCfg_t']
+        Params['DevConfig'][DevId]['DataPath'] = {
+            'Interface': DataPathConfig['intfSel'],
+            'Packet0': int(DataPathConfig['transferFmtPkt0'][2:], 16),
+            'Packet1': int(DataPathConfig['transferFmtPkt1'][2:], 16),
+            'CqConfig': DataPathConfig['cqConfig'],
+            'Cq0TransSize': DataPathConfig['cq0TransSize'],
+            'Cq1TransSize': DataPathConfig['cq1TransSize'],
+            'Cq2TransSize': DataPathConfig['cq2TransSize']
         }
 
-        if Params["DevConfig"][DevId]["DataPath"]["Interface"] == 1:
-            Params["DevConfig"][DevId]["DataPath"].update({
-                "LaneMap": int(deviceConfig["rawDataCaptureConfig"]["rlDevLaneEnable_t"]["laneMap"][2:], 16),
-                "LaneMapSel": int(deviceConfig["rawDataCaptureConfig"]["rlDevLaneEnable_t"]["laneMapSel"][2:], 16),
-                "Frame0": int(deviceConfig["rawDataCaptureConfig"]["rlDevFrame0_t"]["frameSize"][2:], 16),
-                "Frame1": int(deviceConfig["rawDataCaptureConfig"]["rlDevFrame1_t"]["frameSize"][2:], 16),
-                "Frame2": int(deviceConfig["rawDataCaptureConfig"]["rlDevFrame2_t"]["frameSize"][2:], 16),
-                "RxChannel0": int(deviceConfig["rawDataCaptureConfig"]["rlDevDataPathCfg_t"]["rx0ChannelEnable"][2:], 16),
-                "RxChannel1": int(deviceConfig["rawDataCaptureConfig"]["rlDevDataPathCfg_t"]["rx1ChannelEnable"][2:], 16)
+        if Params['DevConfig'][DevId]['DataPath']['Interface'] == 1:
+            Params['DevConfig'][DevId]['DataPath'].update({
+                'LaneMap': int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevLaneEnable_t']['laneEn'][2:], 16),
+                'LvdsFormat': int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevLvdsLaneCfg_t']['laneFmtMap']),
+                'LvdsMsbFirst': bool(int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevLvdsLaneCfg_t']['laneParamCfg'][2:], 16) & 1),
+                'LvdsMsbCrcPresent': bool(int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevLvdsLaneCfg_t']['laneParamCfg'][2:], 16) & 2),
+                'LvdsPktEndPulse': bool(int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevLvdsLaneCfg_t']['laneParamCfg'][2:], 16) & 4)
+            })
+        
+        if Params['DevConfig'][DevId]['DataPath']['Interface'] == 0:
+            Params['DevConfig'][DevId]['DataPath'].update({
+                'CsiLane0Pos': int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevCsi2Cfg_t']['lanePosPolSel'][2:], 16) & 15,
+                'CsiLane1Pos': (int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevCsi2Cfg_t']['lanePosPolSel'][2:], 16) >> 4) & 15,
+                'CsiLane2Pos': (int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevCsi2Cfg_t']['lanePosPolSel'][2:], 16) >> 8) & 15,
+                'CsiLane3Pos': (int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevCsi2Cfg_t']['lanePosPolSel'][2:], 16) >> 12) & 15,
+                'CsiLaneClkPos': (int(MmWaveDevicesConfig[count]['rawDataCaptureConfig']['rlDevCsi2Cfg_t']['lanePosPolSel'][2:], 16) >> 16) & 15
             })
 
         # Frame configuration
-        FrameConfig = deviceConfig["frameConfig"]
-        Params["DevConfig"][DevId]["FrameConfig"] = {
-            "FrameRate": FrameConfig["frameRate"],
-            "NumFrames": FrameConfig["numFrames"],
-            "StartIdx": FrameConfig["frameStartIdx"],
-            "EndIdx": FrameConfig["frameEndIdx"]
-        }
-
+        Params['FrameType'] = 0
+        if Params['FrameType'] == 0:
+            FrameConfig = MmWaveDevicesConfig[count]['rfConfig']['rlFrameCfg_t']
+            Params['DevConfig'][DevId]['FrameConfig'] = {
+                'ChirpIdx': FrameConfig['chirpStartIdx'],
+                'ChirpEndIdx': FrameConfig['chirpEndIdx'],
+                'NumChirpLoops': FrameConfig['numLoops'],
+                'NumFrames': FrameConfig['numFrames'],
+                'Periodicity': FrameConfig['framePeriodicity_msec'],
+                'FrameTriggerDelay': FrameConfig['frameTriggerDelay']
+            }
+        
+        if Params['FrameType'] == 1:
+            # Advanced frame configuration
+            AdvancedFrameSequence = MmWaveDevicesConfig[count]['rfConfig']['rlAdvFrameCfg_t']['frameSeq']
+            AdvancedFrameData = MmWaveDevicesConfig[count]['rfConfig']['rlAdvFrameCfg_t']['frameData']
+            Params['DevConfig'][DevId]['AdvFrame'] = {
+                'NumFrames': AdvancedFrameSequence['numFrames'],
+                'NumSubFrames': AdvancedFrameSequence['numOfSubFrames'],
+                'FrameTriggerDelay': AdvancedFrameSequence['frameTrigDelay_usec']
+            }
+            # Subframe configuration
+            for SubFrameId in range(len(AdvancedFrameSequence['subFrameCfg'])):
+                sub_frame = AdvancedFrameSequence['subFrameCfg'][SubFrameId]['rlSubFrameCfg_t']
+                Params['DevConfig'][DevId]['AdvFrame'].setdefault('SubFrame', {})[SubFrameId] = {
+                    'ForceProfileIdx': sub_frame['forceProfileIdx'],
+                    'ChirpStartIdx': sub_frame['chirpStartIdx'],
+                    'NumChirp': sub_frame['numOfChirps'],
+                    'NumChirpLoops': sub_frame['numLoops'],
+                    'BurstPeriod': sub_frame['burstPeriodicity_msec'],
+                    'ChirpStartIdOffset': sub_frame['chirpStartIdxOffset'],
+                    'NumBurst': sub_frame['numOfBurst'],
+                    'NumBurstLoops': sub_frame['numOfBurstLoops'],
+                    'SubFramePeriod': sub_frame['subFramePeriodicity_msec'],
+                    'ChirpsPerDataPkt': AdvancedFrameData['subframeDataCfg'][SubFrameId]['rlSubFrameDataCfg_t']['numChirpsInDataPacket']
+                }
+        
+        if Params['FrameType'] == 2:
+            # Continuous mode configuration
+            ContinuousModeConfig = MmWaveDevicesConfig[count]['rfConfig']['rlContModeCfg_t']
+            Params['DevConfig'][DevId]['ContFrame'] = {
+                'StartFreq': ContinuousModeConfig['startFreqConst_GHz'],
+                'SamplingRate': ContinuousModeConfig['digOutSampleRate'],
+                'Tx0OutPowerBackoffCode': int(ContinuousModeConfig['txOutPowerBackoffCode'][2:], 16) & 255,
+                'Tx1OutPowerBackoffCode': (int(ContinuousModeConfig['txOutPowerBackoffCode'][2:], 16) >> 8) & 255,
+                'Tx2OutPowerBackoffCode': (int(ContinuousModeConfig['txOutPowerBackoffCode'][2:], 16) >> 16) & 255,
+                'Tx0PhaseShifter': int(ContinuousModeConfig['txPhaseShifter'][2:], 16) & 255,
+                'Tx1PhaseShifter': (int(ContinuousModeConfig['txPhaseShifter'][2:], 16) >> 8) & 255,
+                'Tx2PhaseShifter': (int(ContinuousModeConfig['txPhaseShifter'][2:], 16) >> 16) & 255,
+                'RxGain': ContinuousModeConfig['rxGain_dB'],
+                'HpfCornerFreq1': ContinuousModeConfig['hpfCornerFreq1'],
+                'HpfCornerFreq2': ContinuousModeConfig['hpfCornerFreq2']
+            }
+    Params['TxToEnable'] = TxToEnable
+    Params['RxToEnable'] = RxToEnable
+        
     # Return the configuration parameters
     return Params
-
-
-        # Additional Configurations (BPM, Phase Shift, Data Format, Data Path) can be added similarly...
-
-    return Params
-
 
 
 if __name__ == "__main__":
@@ -307,7 +355,7 @@ if __name__ == "__main__":
 
     if json_valid:
         print("JSON files are valid.")
-        print(params)
+        print(json.dumps(params, indent=4, sort_keys=True))
     else:
         print("JSON files are invalid.")
-        print(params)
+        print(json.dumps(params, indent=4, sort_keys=True))
