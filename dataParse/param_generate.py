@@ -190,6 +190,7 @@ def generate_params(config_path, radar_type):
         'numAntenna': num_virtual_rx_ant,
         'antenna_DesignFreq': params['startFreqConst'],
         'antPos': np.arange(num_virtual_rx_ant),
+        'antenna_azimuthonly': max((np.where(D[:, 1] == y)[0] for y in np.unique(D[:, 1])), key=len),
         'antDis': 0.5 * carrier_frequency / params['startFreqConst'],
         'method': 1,
         'angles_DOA_azi': [-80, 80],
