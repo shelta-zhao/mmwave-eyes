@@ -2,7 +2,7 @@
     Author      : Shelta Zhao(赵小棠)
     Affiliation : Nanjing University
     Email       : xiaotang_zhao@outlook.com
-    Description : This script converts radar data to Point Cloud Data (PCD) format.
+    Description : Parses mmWave Studio config JSON files.
 """
 
 import os
@@ -20,8 +20,13 @@ def generate_params(config_path, radar_type):
         config_path (str): Path to the folder containing JSON files from mmWave Studio.
         radar_type (str): The type of radar device used in the experiment.
     
-    Returns:
+    Returns:d
         dict: A dictionary containing the configuration parameters for the mmWave devices.
+        - readDataParams: Parameters for reading the data from the binary files.
+        - rangeProcParams: Parameters for range processing.
+        - dopplerProcParams: Parameters for Doppler processing.
+        - CFARCASOParams: Parameters for CFAR-CASO.
+        - DOAParams: Parameters for Direction of Arrival (DOA) estimation.
     """
 
     # Validate the JSON files
@@ -200,18 +205,15 @@ def generate_params(config_path, radar_type):
         'sidelobeLevel_dB_elev': 0,
         'dopplerFFTSize': doppler_fft_size
     }
-
-    # update parameters
-    params.update({
+    
+    # return the parameters
+    return {
         'readDataParams': read_data_params,
         'rangeProcParams': range_proc_params,
         'dopplerProcParams': doppler_proc_params,
         'CFARCASOParams': cfar_caso_params,
-        'doaParams': doa_params
-    })
-
-    # return the parameters
-    return params
+        'DOAParams': doa_params
+    }
 
 
 def validate_json(config_path):
@@ -560,4 +562,4 @@ if __name__ == "__main__":
     if not params:
         print("Invalid JSON files")
     else:
-        print(params['doaParams'])
+        print(params)
