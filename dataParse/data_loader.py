@@ -9,8 +9,35 @@ import os
 import json
 import yaml
 import numpy as np
+import pandas as pd
+from datetime import datetime
 from param_generate import generate_params
 
+
+def get_timestamps(raw_data_path):
+    """
+    Extract the timestamp from the log file in the specified directory.
+
+    Parameters:
+        raw_data_path (str): Path to the directory containing log files.
+
+    Returns:
+        int: The extracted timestamp in milliseconds.
+    """
+
+    # Get log file names in the directory
+    log_file_name = [f for f in os.listdir(raw_data_path) if f.endswith('.csv')][0]
+    
+    # Read timestamps from the log file
+    log_file = pd.read_csv(os.path.join(raw_data_path, log_file_name), skiprows=1, usecols=[0], on_bad_lines='skip', index_col=None)
+    for _, row in log_file.iterrows():
+        if row.str.contains('Capture start time').any():
+            raw_timestamp = row.str.split(' - ').iloc[0][1]
+            timestamp = datetime.strptime(raw_timestamp, "%a %b %d %H:%M:%S %Y")
+            break
+
+    # Return the timestamps in milliseconds
+    return int(timestamp.timestamp() * 1000)
 
 def get_num_frames(raw_data_path, data_size_one_frame):
     """
@@ -106,6 +133,47 @@ def load_one_frame(frame_idx, bin_file_frames, file_handles, data_size_one_frame
         raise IOError(f"Error reading frame data: {e}")
     
 
+def load_all_frames(bin_file_frames, file_handles, data_size_one_frame):
+    """
+    Load all frames of data from the binary files.
+
+    Parameters:
+        bin_file_frames (list): List of number of frames per binary file.
+        file_handles (list): List of file handles for opened binary files.
+        data_size_one_frame (int): Size of one frame in bytes.
+
+    Returns:
+        np.ndarray: Array containing all frame data. Shape: (num_frames, raw_data_per_frame).
+    """
+
+    all_frames_data = []  # To store data for all frames
+
+    for fid_idx, num_frames_in_file in enumerate(bin_file_frames):
+        file_handle = file_handles[fid_idx]
+        try:
+            # Seek to the beginning of the file
+            file_handle.seek(0, os.SEEK_SET)
+
+            # Load all frames from the current binary file
+            raw_data = np.fromfile(file_handle, dtype=np.uint16, count=num_frames_in_file * (data_size_one_frame // 2)).astype(np.float32)
+
+            if len(raw_data) * 2 != num_frames_in_file * data_size_one_frame:
+                raise ValueError(f"Incorrect data length in file {fid_idx}: {len(raw_data) * 2}, expected: {num_frames_in_file * data_size_one_frame}")
+
+            # Adjust values greater than 32768 to the negative range
+            adjusted_data = raw_data - (raw_data >= 2 ** 15) * 2 ** 16
+
+            # Reshape into frames and append to the list
+            frames_data = adjusted_data.reshape((num_frames_in_file, -1))
+            all_frames_data.append(frames_data)
+
+        except Exception as e:
+            raise IOError(f"Error reading frames from file {fid_idx}: {e}")
+
+    # Combine data from all binary files into a single array
+    return np.vstack(all_frames_data)
+
+
 if __name__  == "__main__":
 
     with open("data2parse.yaml", "r") as file:
@@ -116,8 +184,16 @@ if __name__  == "__main__":
     radar_params = generate_params(config_path, data['radar'])
     readObj = radar_params['readDataParams']
 
+    # Test timestamp extraction
+    timestamp = get_timestamps(raw_data_path)
+    print(f"Timestamp: {timestamp}")
+    
+    # Test frame loading
     bin_file_frames, file_handles = get_num_frames(raw_data_path, readObj['dataSizeOneFrame'])
     time_domain_data = load_one_frame(1, bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
+    time_domain_datas = load_all_frames(bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
     print(type(time_domain_data))
-    print(time_domain_data.shape)
+    print(time_domain_datas.shape)
+
+    # 
     
