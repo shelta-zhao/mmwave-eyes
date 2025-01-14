@@ -190,7 +190,7 @@ def get_regular_data(readObj, time_domain_datas):
 
     # Get the number of frames, chirps, and samples
     num_frames = time_domain_datas.shape[0]
-    num_lane, ch_interleave = readObj['numLane'], readObj['chInterleave']
+    num_lane, ch_interleave, iq_swap = readObj['numLane'], readObj['chInterleave'], readObj['iqSwap']
     num_samples, num_chirps, num_tx, num_rx= readObj['numAdcSamplePerChirp'], readObj['numChirpsPerFrame'], readObj['numTxForMIMO'], readObj['numRxForMIMO']   
 
     def process_frame(frame_idx):
@@ -198,24 +198,30 @@ def get_regular_data(readObj, time_domain_datas):
         raw_data_complex = time_domain_datas[frame_idx, :].squeeze()
 
         # Reshape the time domain data based on the number of lanes
-        raw_data_reshaped = np.reshape(raw_data_complex, (num_lane * 2, -1))
-        raw_data_I = raw_data_reshaped[:num_lane, :].flatten()
-        raw_data_Q = raw_data_reshaped[num_lane:, :].flatten()
+        raw_data_reshaped = np.reshape(raw_data_complex, (num_lane * 2, -1), order='F')
+        raw_data_I = raw_data_reshaped[:num_lane, :].reshape(-1, order='F')
+        raw_data_Q = raw_data_reshaped[num_lane:, :].reshape(-1, order='F')
         frame_data = np.column_stack((raw_data_I, raw_data_Q))
 
         # Swap I/Q if necessary
-        frame_data[:, [0, 1]] = frame_data[:, [1, 0]] if readObj['iqSwap'] else frame_data[:, [0, 1]]
+        frame_data[:, [0, 1]] = frame_data[:, [1, 0]] if iq_swap else frame_data[:, [0, 1]]
 
         # Combine I/Q data into complex data
         frame_data_complex = frame_data[:, 0] + 1j * frame_data[:, 1]
 
         # Reshape the complex data into regular data : (num_chirp, num_tx, num_rx, num_samples)
-        frame_data_regular = frame_data_complex.reshape((num_chirps, num_rx, num_samples)) 
+        results = np.zeros((num_chirps, num_rx, num_samples), dtype=np.complex64)
+        frame_data_regular = frame_data_complex.reshape((num_samples * num_rx, num_chirps), order='F').T
         if ch_interleave == 1:
-            frame_data_regular = frame_data_regular.transpose(0, 2, 1)
-        frame_data_regular = frame_data_regular.reshape((num_tx, -1, num_rx, num_samples)).transpose(1, 2, 0, 3)
+            for i in range(num_chirps):
+                results[i, :, :] = frame_data_regular[i, :].reshape((num_samples, num_rx), order='F').T
+        else:
+            for i in range(num_chirps):
+                results[i, :, :] = frame_data_regular[i, :].reshape((num_rx, num_samples), order='F').T
+        results = results.reshape((num_tx, -1, num_rx, num_samples), order='F').transpose(3, 1, 2, 0)
 
-        return frame_data_regular
+        # Return the regular data
+        return results
 
     # Process all frames in parallel
     with concurrent.futures.ThreadPoolExecutor() as executor:
