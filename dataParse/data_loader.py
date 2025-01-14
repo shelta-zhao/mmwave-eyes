@@ -7,6 +7,7 @@
 
 import os
 import yaml
+import scipy
 import numpy as np
 import pandas as pd
 import concurrent.futures
@@ -248,4 +249,5 @@ if __name__  == "__main__":
     print(type(regular_data))
     print(regular_data.shape)
 
-    
+    # Save regular data as mat file
+    scipy.io.savemat("regular_data_python.mat", {"regular_data": regular_data})
