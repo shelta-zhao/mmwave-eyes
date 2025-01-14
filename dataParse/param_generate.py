@@ -22,11 +22,12 @@ def generate_params(config_path, radar_type):
     
     Returns:d
         dict: A dictionary containing the configuration parameters for the mmWave devices.
-        - readDataParams: Parameters for reading the data from the binary files.
-        - rangeProcParams: Parameters for range processing.
-        - dopplerProcParams: Parameters for Doppler processing.
-        - CFARCASOParams: Parameters for CFAR-CASO.
-        - DOAParams: Parameters for Direction of Arrival (DOA) estimation.
+        - radar: radar type
+        - readObj: Parameters for reading the data from the binary files.
+        - rangeFFTObj: Parameters for range processing.
+        - dopplerFFTObj: Parameters for Doppler processing.
+        - detectObj: Parameters for CFAR-CASO.
+        - DOAObj: Parameters for Direction of Arrival (DOA) estimation.
     """
 
     # Validate the JSON files
@@ -208,11 +209,12 @@ def generate_params(config_path, radar_type):
     
     # return the parameters
     return {
-        'readDataParams': read_data_params,
-        'rangeProcParams': range_proc_params,
-        'dopplerProcParams': doppler_proc_params,
-        'CFARCASOParams': cfar_caso_params,
-        'DOAParams': doa_params
+        'radar': params['radarType'],
+        'readObj': read_data_params,
+        'rangeFFTObj': range_proc_params,
+        'dopplerFFTObj': doppler_proc_params,
+        'detectObj': cfar_caso_params,
+        'DOAObj': doa_params
     }
 
 

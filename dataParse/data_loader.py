@@ -6,10 +6,10 @@
 """
 
 import os
-import json
 import yaml
 import numpy as np
 import pandas as pd
+import concurrent.futures
 from datetime import datetime
 from param_generate import generate_params
 
@@ -38,6 +38,7 @@ def get_timestamps(raw_data_path):
 
     # Return the timestamps in milliseconds
     return int(timestamp.timestamp() * 1000)
+
 
 def get_num_frames(raw_data_path, data_size_one_frame):
     """
@@ -95,7 +96,7 @@ def load_one_frame(frame_idx, bin_file_frames, file_handles, data_size_one_frame
         data_size_one_frame (int): Size of one frame in bytes.
 
     Returns:
-        np.ndarray: Data for one frame.
+        np.ndarray: Data for one frame. Shape: (1, raw_data_per_frame).
     """
 
     # Check if the frame index is valid
@@ -127,8 +128,8 @@ def load_one_frame(frame_idx, bin_file_frames, file_handles, data_size_one_frame
             raise ValueError(f"Read incorrect data length: {len(raw_data)*2}, expected: {data_size_one_frame}")
 
         # Adjust values greater than 32768 to negative range
-        time_domain_data = raw_data - (raw_data >= 2 ** 15) * 2 ** 16
-        return time_domain_data
+        time_domain_data = raw_data - (raw_data >= 2**15) * 2**16
+        return time_domain_data.reshape((1, -1)).astype(np.float32)
     except Exception as e:
         raise IOError(f"Error reading frame data: {e}")
     
@@ -161,10 +162,10 @@ def load_all_frames(bin_file_frames, file_handles, data_size_one_frame):
                 raise ValueError(f"Incorrect data length in file {fid_idx}: {len(raw_data) * 2}, expected: {num_frames_in_file * data_size_one_frame}")
 
             # Adjust values greater than 32768 to the negative range
-            adjusted_data = raw_data - (raw_data >= 2 ** 15) * 2 ** 16
+            time_domain_data = raw_data - (raw_data >= 2**15) * 2**16
 
             # Reshape into frames and append to the list
-            frames_data = adjusted_data.reshape((num_frames_in_file, -1))
+            frames_data = time_domain_data.reshape((num_frames_in_file, -1)).astype(np.float32)
             all_frames_data.append(frames_data)
 
         except Exception as e:
@@ -174,6 +175,53 @@ def load_all_frames(bin_file_frames, file_handles, data_size_one_frame):
     return np.vstack(all_frames_data)
 
 
+def get_regular_data(readObj, time_domain_datas):
+    """
+    Get regular data from the time domain data.
+
+    Parameters:
+        readObj (dict): Dictionary containing radar parameters.
+        time_domain_datas (np.ndarray): Time domain data. Shape: (num_frames, raw_data_per_frame).
+
+    Returns:
+        np.ndarray: Regular data. Shape: (num_frames, num_chirps, num_rx, num_tx, num_samples)
+    """
+
+    # Get the number of frames, chirps, and samples
+    num_frames = time_domain_datas.shape[0]
+    num_lane, ch_interleave = readObj['numLane'], readObj['chInterleave']
+    num_samples, num_chirps, num_tx, num_rx= readObj['numAdcSamplePerChirp'], readObj['numChirpsPerFrame'], readObj['numTxForMIMO'], readObj['numRxForMIMO']   
+
+    def process_frame(frame_idx):
+        # Get the raw data for one frame
+        raw_data_complex = time_domain_datas[frame_idx, :].squeeze()
+
+        # Reshape the time domain data based on the number of lanes
+        raw_data_reshaped = np.reshape(raw_data_complex, (num_lane * 2, -1))
+        raw_data_I = raw_data_reshaped[:num_lane, :].flatten()
+        raw_data_Q = raw_data_reshaped[num_lane:, :].flatten()
+        frame_data = np.column_stack((raw_data_I, raw_data_Q))
+
+        # Swap I/Q if necessary
+        frame_data[:, [0, 1]] = frame_data[:, [1, 0]] if readObj['iqSwap'] else frame_data[:, [0, 1]]
+
+        # Combine I/Q data into complex data
+        frame_data_complex = frame_data[:, 0] + 1j * frame_data[:, 1]
+
+        # Reshape the complex data into regular data : (num_chirp, num_tx, num_rx, num_samples)
+        frame_data_regular = frame_data_complex.reshape((num_chirps, num_rx, num_samples)) 
+        if ch_interleave == 1:
+            frame_data_regular = frame_data_regular.transpose(0, 2, 1)
+        frame_data_regular = frame_data_regular.reshape((num_tx, -1, num_rx, num_samples)).transpose(1, 2, 0, 3)
+
+        return frame_data_regular
+
+    # Process all frames in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+            regular_data = list(executor.map(process_frame, range(num_frames)))
+    
+    return np.stack(regular_data)
+
 if __name__  == "__main__":
 
     with open("data2parse.yaml", "r") as file:
@@ -182,7 +230,7 @@ if __name__  == "__main__":
     config_path = os.path.join("rawData/configs", data["config"])
     
     radar_params = generate_params(config_path, data['radar'])
-    readObj = radar_params['readDataParams']
+    readObj = radar_params['readObj']
 
     # Test timestamp extraction
     timestamp = get_timestamps(raw_data_path)
@@ -191,9 +239,13 @@ if __name__  == "__main__":
     # Test frame loading
     bin_file_frames, file_handles = get_num_frames(raw_data_path, readObj['dataSizeOneFrame'])
     time_domain_data = load_one_frame(1, bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
-    time_domain_datas = load_all_frames(bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
+    # time_domain_datas = load_all_frames(bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
     print(type(time_domain_data))
-    print(time_domain_datas.shape)
+    print(time_domain_data.shape)
 
-    # 
+    # Test regular data
+    regular_data = get_regular_data(readObj, time_domain_data)
+    print(type(regular_data))
+    print(regular_data.shape)
+
     
