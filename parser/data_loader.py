@@ -223,6 +223,7 @@ def get_regular_data(readObj, time_domain_datas):
     
     return np.stack(regular_data)
 
+
 if __name__  == "__main__":
 
     with open("data2parse.yaml", "r") as file:
