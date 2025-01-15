@@ -1,4 +1,5 @@
 # radar data
+/datas
 *.jpg
 *.png
 *.bin

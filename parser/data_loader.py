@@ -2,12 +2,11 @@
     Author      : Shelta Zhao(赵小棠)
     Affiliation : Nanjing University
     Email       : xiaotang_zhao@outlook.com
-    Description : Load & Get regular raw radar data.
+    Description : Load & Get regular radar data.
 """
 
 import os
 import yaml
-import scipy
 import numpy as np
 import pandas as pd
 import concurrent.futures
@@ -15,22 +14,74 @@ from datetime import datetime
 from param_generate import generate_params
 
 
-def get_timestamps(raw_data_path):
+def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=False, load=False):
+    """
+    Head Function: Get regular raw radar data.
+
+    Parameters:
+        data_path (str): Path to the directory containing binary files.
+        readObj (dict): Dictionary containing radar parameters.
+        frame_idx (str): Option to load all frames or a specific frame (start from 1). Default: 'all'.
+        timestamp (bool): Option to extract timestamp from log file. Default: False.
+        save (bool): Option to save the regular data in  file.
+        load (bool): Option to load the regular data from raw data path.
+
+    Returns:
+        np.ndarray: Regular raw radar data. Shape: (num_frames, num_samples, num_chirps, num_rx, num_tx)
+    """
+
+    # Load regular data if required
+    if load:
+        try:
+            regular_data = np.load(f"{data_path}/regular_data.npy")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {data_path}/data.npy")
+        except ValueError as e:
+            raise ValueError(f"Error loading numpy array from file: {data_path}/data.npy. Details: {e}")
+        except Exception as e:
+            raise RuntimeError(f"An unexpected error occurred while loading {data_path}/data.npy. Details: {e}")
+    else:
+        # Get bin file frames and file handles
+        bin_file_frames, file_handles = get_num_frames(data_path, readObj['dataSizeOneFrame'])
+        
+        # Load raw data
+        if frame_idx == 'all':
+            time_domain_datas = load_all_frames(bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
+        else:
+            time_domain_datas = load_one_frame(int(frame_idx), bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
+
+        # Generate regular data
+        regular_data = generate_regular_data(readObj, time_domain_datas)
+
+        # Save the regular data if required
+        if save:
+            np.save(f"{data_path}/regular_data.npy", regular_data)
+
+    # Extract timestamp if required
+    if timestamp:
+        timestamp = get_timestamps(data_path)
+        return regular_data, timestamp
+    else:
+        # Return regular data
+        return regular_data
+
+
+def get_timestamps(data_path):
     """
     Extract the timestamp from the log file in the specified directory.
 
     Parameters:
-        raw_data_path (str): Path to the directory containing log files.
+        data_path (str): Path to the directory containing log files.
 
     Returns:
         int: The extracted timestamp in milliseconds.
     """
 
     # Get log file names in the directory
-    log_file_name = [f for f in os.listdir(raw_data_path) if f.endswith('.csv')][0]
+    log_file_name = [f for f in os.listdir(data_path) if f.endswith('.csv')][0]
     
     # Read timestamps from the log file
-    log_file = pd.read_csv(os.path.join(raw_data_path, log_file_name), skiprows=1, usecols=[0], on_bad_lines='skip', index_col=None)
+    log_file = pd.read_csv(os.path.join(data_path, log_file_name), skiprows=1, usecols=[0], on_bad_lines='skip', index_col=None)
     for _, row in log_file.iterrows():
         if row.str.contains('Capture start time').any():
             raw_timestamp = row.str.split(' - ').iloc[0][1]
@@ -41,12 +92,12 @@ def get_timestamps(raw_data_path):
     return int(timestamp.timestamp() * 1000)
 
 
-def get_num_frames(raw_data_path, data_size_one_frame):
+def get_num_frames(data_path, data_size_one_frame):
     """
     Calculate the total number of frames and frames per binary file, and open the files.
 
     Parameters:
-        raw_data_path (str): Binary file paths.
+        data_path (str): Binary file paths.
         data_size_one_frame (int): Size of one frame in bytes.
 
     Returns:
@@ -56,16 +107,16 @@ def get_num_frames(raw_data_path, data_size_one_frame):
     """
 
     # Get all binary files in the directory
-    bin_file_names = [f for f in os.listdir(raw_data_path) if f.endswith('.bin')]
+    bin_file_names = [f for f in os.listdir(data_path) if f.endswith('.bin')]
     if len(bin_file_names) == 0:
-        raise RuntimeError(f"No binary files found in the {raw_data_path}.")
+        raise RuntimeError(f"No binary files found in the {data_path}.")
     
     # Get the total number of frames and frames per binary file
     bin_file_frames, file_handles = [], []
     for _, bin_file_name in enumerate(bin_file_names):
         try:
             # Open the file
-            bin_file_path = os.path.join(raw_data_path, bin_file_name)
+            bin_file_path = os.path.join(data_path, bin_file_name)
             file_handle = open(bin_file_path, 'rb')
             file_handles.append(file_handle)
 
@@ -172,13 +223,13 @@ def load_all_frames(bin_file_frames, file_handles, data_size_one_frame):
         except Exception as e:
             raise IOError(f"Error reading frames from file {fid_idx}: {e}")
 
-    # Combine data from all binary files into a single array
+    # Combine data from all binary files
     return np.vstack(all_frames_data)
 
 
-def get_regular_data(readObj, time_domain_datas):
+def generate_regular_data(readObj, time_domain_datas):
     """
-    Get regular data from the time domain data.
+    Generate regular data from the time domain data.
 
     Parameters:
         readObj (dict): Dictionary containing radar parameters.
@@ -226,30 +277,24 @@ def get_regular_data(readObj, time_domain_datas):
 
 if __name__  == "__main__":
 
+    # Parse data config & Get readObj
     with open("data2parse.yaml", "r") as file:
         data = yaml.safe_load(file)
-    raw_data_path = os.path.join("rawData/adcDatas", f"{data['prefix']}/{data['index']}")
-    config_path = os.path.join("rawData/configs", data["config"])
-    
-    radar_params = generate_params(config_path, data['radar'])
-    readObj = radar_params['readObj']
+    data_path = os.path.join("datas/adcDatas", f"{data['prefix']}/{data['index']}")
+    config_path = os.path.join("datas/configs", data["config"])
+    readObj = generate_params(config_path, data['radar'])['readObj']
 
     # Test timestamp extraction
-    timestamp = get_timestamps(raw_data_path)
+    timestamp = get_timestamps(data_path)
     print(f"Timestamp: {timestamp}")
     
     # Test frame loading
-    bin_file_frames, file_handles = get_num_frames(raw_data_path, readObj['dataSizeOneFrame'])
+    bin_file_frames, file_handles = get_num_frames(data_path, readObj['dataSizeOneFrame'])
     time_domain_data = load_one_frame(1, bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
-    # time_domain_datas = load_all_frames(bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
     print(type(time_domain_data))
     print(time_domain_data.shape)
 
     # Test regular data
-    regular_data = get_regular_data(readObj, time_domain_data)
+    regular_data = generate_regular_data(readObj, time_domain_data)
     print(type(regular_data))
     print(regular_data.shape)
-
-    # Save regular data as mat file
-    scipy.io.savemat("regular_data_python.mat", {"regular_data": regular_data})
-    

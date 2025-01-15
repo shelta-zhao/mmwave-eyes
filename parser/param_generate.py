@@ -11,16 +11,17 @@ import json
 import numpy as np
 from datetime import datetime, timezone, timedelta
 
-
-def generate_params(config_path, radar_type):
+def get_radar_params(config_path, radar_type, save=False, load=False):
     """
-    Generates the configuration parameters for the mmWave devices based on the JSON files in the config folder.
-    
+    Head Function: Get radar params.
+
     Parameters:
         config_path (str): Path to the folder containing JSON files from mmWave Studio.
         radar_type (str): The type of radar device used in the experiment.
-    
-    Returns:d
+        save (bool): Option to save the radar params in yaml file.
+        load (bool): Option to load the radar params from config path.
+
+    Returns:
         dict: A dictionary containing the configuration parameters for the mmWave devices.
         - radar: radar type
         - readObj: Parameters for reading the data from the binary files.
@@ -30,6 +31,41 @@ def generate_params(config_path, radar_type):
         - DOAObj: Parameters for Direction of Arrival (DOA) estimation.
     """
 
+    # Load params if required
+    if load:
+        try:
+            with open(f"{config_path}/radar_params.yaml", "r") as file:
+                radar_params = yaml.safe_load(file)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {config_path}/radar_params.yaml")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing YAML file: {config_path}/radar_params.yaml. Details: {e}")
+        except Exception as e:
+            raise RuntimeError(f"An unexpected error occurred while loading {config_path}/radar_params.yaml. Details: {e}")
+    else:
+        # Generate radar params
+        radar_params = generate_params(config_path, radar_type)
+
+        # Save params if required
+        if save:
+            save_params(radar_params, config_path)
+    
+    # Return radar params
+    return radar_params
+
+
+def generate_params(config_path, radar_type):
+    """
+    Generates the configuration parameters for the mmWave devices based on the JSON files in the config folder.
+    
+    Parameters:
+        config_path (str): Path to the folder containing JSON files from mmWave Studio.
+        radar_type (str): The type of radar device used in the experiment.
+    
+    Returns:
+        dict: A dictionary containing the configuration parameters for the mmWave devices.
+    """
+    
     # Validate the JSON files
     json_params, json_valid = validate_json(config_path)
 
@@ -114,9 +150,8 @@ def generate_params(config_path, radar_type):
     velocity_bin_size = velocity_resolution * num_chirps_per_vir_ant / doppler_fft_size
     maximum_velocity = lambda_ / (chirp_interval * 4)
 
-    # read data parameters
+    # Read data parameters
     read_data_params = {
-        'enable': 1,
         'iqSwap': params['iqSwap'],
         'numLane': params['numLane'],
         'chInterleave': params['chInterleave'],
@@ -127,9 +162,8 @@ def generate_params(config_path, radar_type):
         'numRxForMIMO': params['numRxToEnable']
     }
 
-    # range FFT parameters
+    # Range FFT parameters
     range_proc_params = {
-        'enable': 1,
         'radarPlatform': radar_type,
         'numAntenna': num_virtual_rx_ant,
         'numAdcSamplePerChirp': num_sample_per_chirp,
@@ -139,14 +173,12 @@ def generate_params(config_path, radar_type):
         'maxRange': max_range,
         'dcOffsetCompEnable': 1,
         'rangeWindowEnable': 1,
-        'rangeWindowCoeff': np.hanning(num_sample_per_chirp)[:num_sample_per_chirp // 2],
+        'FFTOutScaleOn': 0,
         'scaleFactorRange': scale_factor[int(np.log2(range_fft_size)) - 4],
-        'FFTOutScaleOn': 0
     }
 
     # Doppler FFT parameters
     doppler_proc_params = {
-        'enable': 1,
         'numAntenna': num_virtual_rx_ant,
         'numDopplerLines': range_fft_size,
         'dopplerFFTSize': doppler_fft_size,
@@ -155,15 +187,13 @@ def generate_params(config_path, radar_type):
         'maximumVelocity': maximum_velocity,
         'numChirpsPerVirAnt': num_chirps_per_vir_ant,
         'dopplerWindowEnable': 0,
-        'dopplerWindowCoeff': np.hanning(num_chirps_per_vir_ant)[:(num_chirps_per_vir_ant + 1) // 2],
-        'scaleFactorDoppler': scale_factor[int(np.log2(doppler_fft_size)) - 4],
         'FFTOutScaleOn': 0,
-        'clutterRemove': 1
+        'scaleFactorDoppler': scale_factor[int(np.log2(doppler_fft_size)) - 4],
+        'clutterRemoveOn': 1
     }
 
     # CFAR-CASO parameters
     cfar_caso_params = {
-        'enable': 1,
         'detectMethod': 1,
         'numAntenna': num_virtual_rx_ant,
         'refWinSize': [5, 3],
@@ -190,13 +220,12 @@ def generate_params(config_path, radar_type):
 
     # DOA parameters
     doa_params = {
-        'enable': 1,
-        'D': D,
+        'D': D.tolist(),
         'DOAFFTSize': 180,
         'numAntenna': num_virtual_rx_ant,
         'antenna_DesignFreq': params['startFreqConst'],
-        'antPos': np.arange(num_virtual_rx_ant),
-        'antenna_azimuthonly': max((np.where(D[:, 1] == y)[0] for y in np.unique(D[:, 1])), key=len),
+        'antPos': np.arange(num_virtual_rx_ant).tolist(),
+        'antenna_azimuthonly': max((np.where(D[:, 1] == y)[0] for y in np.unique(D[:, 1])), key=len).tolist(),
         'antDis': 0.5 * carrier_frequency / params['startFreqConst'],
         'method': 1,
         'angles_DOA_azi': [-80, 80],
@@ -207,15 +236,17 @@ def generate_params(config_path, radar_type):
         'dopplerFFTSize': doppler_fft_size
     }
     
-    # return the parameters
-    return {
-        'radar': params['radarType'],
+    # Combine all params
+    radar_params = {
         'readObj': read_data_params,
         'rangeFFTObj': range_proc_params,
         'dopplerFFTObj': doppler_proc_params,
         'detectObj': cfar_caso_params,
         'DOAObj': doa_params
     }
+
+    # Return the parameters
+    return radar_params
 
 
 def validate_json(config_path):
@@ -334,6 +365,7 @@ def parse_json(mmwave_json):
     Returns:
         dict: A dictionary containing the configured parameters for each mmWave device.
     """
+
     Params = {}
     MmWaveDevicesConfig = mmwave_json["mmWaveDevices"]
 
@@ -553,15 +585,45 @@ def parse_json(mmwave_json):
     return Params
 
 
+def save_params(radar_params, config_path):
+    """
+    Save all the params related to the config file to yaml file.
+
+    Parameters:
+        radar_params (dict): Configuration parameters for the mmWave devices.
+    
+    Returns:
+        None
+    """
+
+    def convert_numpy(obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, dict):
+            return {k: convert_numpy(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return obj
+        return obj
+    
+    # Save radar parameters
+    radar_params = convert_numpy(radar_params)
+    file_path = f"{config_path}/radar_params.yaml"
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    with open(file_path, 'w') as file:
+        yaml.dump(radar_params, file, default_flow_style=False, sort_keys=False, width=-1)
+
+
 if __name__ == "__main__":
     
-    # Generate parameters for the JSON files
+    # Parse radar config
     with open("data2parse.yaml", "r") as file:
         data = yaml.safe_load(file)
-    config_path = os.path.join("rawData/configs", data["config"])
-    params = generate_params(config_path, data['radar'])
-
-    if not params:
+    config_path = os.path.join("datas/configs", data["config"])
+    
+    # Test generate params
+    radar_params = generate_params(config_path, data['radar'])
+    if not radar_params:
         print("Invalid JSON files")
     else:
-        print(params)
+        print(radar_params)
