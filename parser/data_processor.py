@@ -2,16 +2,36 @@
     Author      : Shelta Zhao(赵小棠)
     Affiliation : Nanjing University
     Email       : xiaotang_zhao@outlook.com
-    Description : Load & Get regular raw radar data.
+    Description : Perform radar process funciotns(3D-FFT, CFAR, DOA, etc).
 """
 
 import os
 import yaml
 import torch
+import scipy
 import numpy as np
 import pandas as pd
 from param_generate import get_radar_params
 from data_loader import get_regular_data
+
+
+def adc_to_pcd(regular_data, radar_params, device, save=False, load=False):
+    """
+    Head Function: Perform procession chain to get Point Cloud Data(pcd) from raw regular data.
+
+    Parameters:
+        ababab
+    
+    Returns:
+        abbaababa
+
+    """
+
+    if load:
+        print('Hello')
+    else:
+        # Perform range_fft
+        range_fft_output = range_fft(regular_data, radar_params['rangeFFTObj'], device)
 
 
 def range_fft(input, rangeFFTObj, device):
@@ -21,42 +41,29 @@ def range_fft(input, rangeFFTObj, device):
     :param rangeFFTObj: range FFT object
     :return: range FFT data
     """
-    # 'dopplerWindowCoeff': np.hanning(num_chirps_per_vir_ant)[:(num_chirps_per_vir_ant + 1) // 2],
-    # Get basic Param & Convert input to tensor
-    num_chirps, num_rx, num_tx = input.shape
+
+    # Get basic fft params
     radar_type, fft_size = rangeFFTObj['radarPlatform'], rangeFFTObj['rangeFFTSize']
-    win_on, win_coeff, scale_on, scale_factor = rangeFFTObj['rangeWindowEnable'], rangeFFTObj['rangeWindowCoeff'], rangeFFTObj['FFTOutScaleOn'], rangeFFTObj['scaleFactorRange']
-    win_coeff = win_coeff.to(device)
+    dc_on, win_on, scale_on, scale_factor = rangeFFTObj['dcOffsetCompEnable'], rangeFFTObj['rangeWindowEnable'], rangeFFTObj['FFTOutScaleOn'], rangeFFTObj['scaleFactorRange']
 
     # Convert input to tensor & Create output
     input = torch.tensor(input, dtype=torch.complex64).to(device)
-    output = torch.zeros((fft_size, num_chirps, num_rx, num_tx), dtype=torch.complex64).to(device)
+    win_coeff = torch.tensor(np.hanning(input.shape[1] + 2)[1:-1], dtype=torch.float32).to(device)
 
-    for tx in range(num_tx):
-        for rx in range(num_rx):
+    # Apply DC offset compensation
+    input = input - torch.mean(input, dim=1, keepdim=True) if dc_on else input
+    # Apply range-domain windowing
+    input = input * win_coeff.view(-1, 1, 1, 1) if win_on else input
+    # Perform FFT for each TX/RX chain
+    fft_output = torch.fft.fft(input, n=fft_size, dim=1)
+    # Apply scale factor
+    fft_output = fft_output * scale_factor if scale_on else fft_output
+    # Phase compensation for IWR6843ISK-ODS
+    if radar_type == 'IWR6843ISK-ODS':
+        fft_output[:, :, :, 1:3, :] *= torch.exp(-1j * torch.pi)
 
-            data = input[:, :, rx, tx].squeeze()
-
-            # DC offset compensation
-            data -= torch.mean(data, dim=0, keepdim=True)
-
-            # Apply range-domain windowing
-            if win_on:
-                data = data * win_coeff.view(-1, 1)
-
-            # Perform FFT
-            fft_output = torch.fft.fft(data, n=fft_size, dim=0)
-
-            if scale_on:
-                fft_output *= scale_factor
-
-            # Phase compensation for IWR6843ISK-ODS
-            if radar_type == 'IWR6843ISK-ODS' and rx in [1, 2]:
-                fft_output = fft_output * torch.exp(-1j * torch.pi)
-
-            output[:, :, rx, tx] = fft_output
-        
-    return output
+    # Return range fft result
+    return fft_output.cpu() if device == 'cuda' else fft_output 
 
 def doppler_fft(rangeFFT_output, dopplerFFTObj):
     """
@@ -101,12 +108,8 @@ if __name__ == "__main__":
     radar_params = get_radar_params(config_path, data['radar'], load=True)
 
     # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', timestamp=True, load=True)
-    print(regular_data.shape)
-    aaaa
+    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)
 
     # Test Range FFT
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-    print("Hello Dislab_mmwavePCD!")
+    range_fft_output = range_fft(regular_data, radar_params['rangeFFTObj'], device)
