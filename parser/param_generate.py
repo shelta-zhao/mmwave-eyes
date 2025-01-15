@@ -272,7 +272,6 @@ def validate_json(config_path):
     mmwave_json = None
     for filename in filenames:
         file_path = os.path.join(config_path, filename)
-        print(file_path)
         if 'setup.json' in filename:
             with open(file_path, 'r') as file:
                 setup_json = json.load(file)

@@ -23,7 +23,7 @@ def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=
         readObj (dict): Dictionary containing radar parameters.
         frame_idx (str): Option to load all frames or a specific frame (start from 1). Default: 'all'.
         timestamp (bool): Option to extract timestamp from log file. Default: False.
-        save (bool): Option to save the regular data in  file.
+        save (bool): Option to save the regular data in  file. note : save only when frame_idx is 'all.
         load (bool): Option to load the regular data from raw data path.
 
     Returns:
@@ -54,8 +54,11 @@ def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=
         regular_data = generate_regular_data(readObj, time_domain_datas)
 
         # Save the regular data if required
-        if save:
-            np.save(f"{data_path}/regular_data.npy", regular_data)
+        if save and frame_idx == 'all':
+            file_path = f"{data_path}/regular_data.npy"
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            np.save(file_path, regular_data)
 
     # Extract timestamp if required
     if timestamp:
