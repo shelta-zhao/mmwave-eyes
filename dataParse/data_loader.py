@@ -2,7 +2,7 @@
     Author      : Shelta Zhao(赵小棠)
     Affiliation : Nanjing University
     Email       : xiaotang_zhao@outlook.com
-    Description : Parses mmWave Studio config JSON files.
+    Description : Load & Get regular raw radar data.
 """
 
 import os
@@ -185,7 +185,7 @@ def get_regular_data(readObj, time_domain_datas):
         time_domain_datas (np.ndarray): Time domain data. Shape: (num_frames, raw_data_per_frame).
 
     Returns:
-        np.ndarray: Regular data. Shape: (num_frames, num_chirps, num_rx, num_tx, num_samples)
+        np.ndarray: Regular data. Shape: (num_frames, num_samples, num_chirps, num_rx, num_tx)
     """
 
     # Get the number of frames, chirps, and samples
@@ -210,18 +210,12 @@ def get_regular_data(readObj, time_domain_datas):
         frame_data_complex = frame_data[:, 0] + 1j * frame_data[:, 1]
 
         # Reshape the complex data into regular data : (num_chirp, num_tx, num_rx, num_samples)
-        results = np.zeros((num_chirps, num_rx, num_samples), dtype=np.complex64)
         frame_data_regular = frame_data_complex.reshape((num_samples * num_rx, num_chirps), order='F').T
-        if ch_interleave == 1:
-            for i in range(num_chirps):
-                results[i, :, :] = frame_data_regular[i, :].reshape((num_samples, num_rx), order='F').T
-        else:
-            for i in range(num_chirps):
-                results[i, :, :] = frame_data_regular[i, :].reshape((num_rx, num_samples), order='F').T
-        results = results.reshape((num_tx, -1, num_rx, num_samples), order='F').transpose(3, 1, 2, 0)
+        reshape_order = (num_chirps, num_rx, num_samples) if ch_interleave == 0 else (num_chirps, num_samples, num_rx)
+        results = frame_data_regular.reshape(reshape_order, order='F').transpose(0, 2, 1)
 
         # Return the regular data
-        return results
+        return results.reshape((num_tx, -1, num_rx, num_samples), order='F').transpose(3, 1, 2, 0)
 
     # Process all frames in parallel
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -257,3 +251,4 @@ if __name__  == "__main__":
 
     # Save regular data as mat file
     scipy.io.savemat("regular_data_python.mat", {"regular_data": regular_data})
+    
