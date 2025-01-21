@@ -48,11 +48,62 @@ class CFARProcessor:
         if self.detectObj['detectMethod'] == 1:
 
             # Perform CFAR-CASO Range
-            N_obj, Ind_obj, noise_obj, snr_obj = self.CFAR_CASO_Range(input)
+            N_obj_Rag, Ind_obj_Rag, noise_obj_Rag, snr_obj_Rag = self.CFAR_CASO_Range(input)
 
-            # Perform CFAR-CASO Doppler
-            N_obj, Ind_obj, noise_obj, snr_obj = self.CFAR_CASO_Doppler(input, Ind_obj)
+            if N_obj_Rag > 0:
 
+                # Perform CFAR-CASO Doppler
+                N_obj_valid, Ind_obj_valid, noise_obj_valid = self.CFAR_CASO_Doppler(input, Ind_obj_Rag)
+
+                # Use aggregate noise estimation for each obj
+                noise_obj_agg = []
+                for i_obj in range(N_obj_valid):
+
+                    # Extract range and Doppler indices for the current object
+                    indx1R = Ind_obj_valid[i_obj][0]
+                    indx1D = Ind_obj_valid[i_obj][1]
+ 
+                    # Find matching indices in Ind_obj_Rag
+                    mask = (Ind_obj_Rag[:, 0] == indx1R) & (Ind_obj_Rag[:, 1] == indx1D)
+                    if mask.any():
+                        noiseInd = torch.nonzero(mask, as_tuple=False).squeeze(1)
+                        noise_obj_agg.append(noise_obj_Rag[noiseInd])
+
+                # Generate detection results
+                detection_results = []
+                for i_obj in range(N_obj_valid):
+                    result = {}
+
+                    # Range & Doppler estimation
+                    result['rangeInd'] = Ind_obj_valid[i_obj][0]  
+                    result['range'] = result['rangeInd'] * self.detectObj['rangeBinSize']
+                    result['dopplerInd'] = Ind_obj_valid[i_obj][1]
+                    result['doppler'] = (result['dopplerInd'] - self.detectObj['dopplerFFTSize'] / 2) * self.detectObj['velocityBinSize']
+                    # 2D FFT values for antennas
+                    result['bin_val'] = input[Ind_obj_valid[i_obj][0], Ind_obj_valid[i_obj][1], :].squeeze()
+                    # Noise variance & SNR
+                    result['noise_var'] = noise_obj_agg[i_obj]
+                    result['signalPower'] = torch.mean(torch.abs(result['bin_val']) ** 2).item()
+                    # Estimated SNR
+                    signal_power = torch.sum(torch.abs(result['bin_val']) ** 2).item()
+                    noise_power = torch.sum(result['noise_var']).item()
+                    result['estSNR'] = signal_power / noise_power if noise_power > 0 else float('inf')
+                    
+                    # Phase correction for TDM MIMO
+                    sig_bin = torch.zeros_like(result['bin_val'], dtype=torch.complex64)
+                    deltaPhi = 2 * torch.pi * (result['dopplerInd'] - self.detectObj['dopplerFFTSize'] / 2) / (self.detectObj['TDM_MIMO_numTX'] * self.detectObj['dopplerFFTSize'])
+
+                    # Apply phase correction for each TX antenna
+                    for i_TX in range(self.detectObj['TDM_MIMO_numTX']):
+                        RX_ID = slice((i_TX) * self.detectObj['numRxAnt'], (i_TX + 1) * self.detectObj['numRxAnt'])
+                        sig_bin[RX_ID] = result['bin_val'][RX_ID] * np.exp(-1j * (i_TX) * deltaPhi)
+                    result['bin_val'] = sig_bin
+
+                    # Append the result to the list
+                    detection_results.append(result)
+
+                # Return the detection results
+                return detection_results
         else:
             raise ValueError("Unknown Detect Method!")
 
