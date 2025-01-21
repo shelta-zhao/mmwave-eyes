@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
 from module.fft_process import FFTProcessor
+from utility.tool_box import reshape_fortran
 import matplotlib.pyplot as plt
 
 class CFARProcessor:
@@ -41,9 +42,7 @@ class CFARProcessor:
         """
 
         # Get non-coherent signal combination along the antenna array
-        input = input.numpy()
-        input = np.reshape(input, (input.shape[0], input.shape[1], input.shape[2] * input.shape[3]), order='F')
-        input = torch.tensor(input)
+        input = reshape_fortran(input, (input.shape[0], input.shape[1], input.shape[2] * input.shape[3]))
 
         # Switch on the dectect method
         if self.detectObj['detectMethod'] == 1:
@@ -62,7 +61,7 @@ class CFARProcessor:
         CFAR detection for range using the CASO method. 
 
         Parameters:
-            sig_integrate: The integrated signal tensor (sum of squared magnitudes).
+            input (torch.Tensor): The input tensor for range CFAR.
 
         Returns:
             N_obj: Number of detected objects.
@@ -117,17 +116,13 @@ class CFARProcessor:
         CFAR detection for Doppler using the CASO method.
 
         Parameters:
-            sig_integrate: The integrated signal tensor (sum of squared magnitudes).
-            N_obj: Number of detected objects.
-            Ind_obj_Rag: Indices of detected objects in range.
-            noise_obj: Noise variances for detected objects.
-            snr_obj: Signal-to-noise ratio for each detected object.
-
+            input (torch.Tensor): The input tensor for Doppler CFAR.
+            Ind_obj_Rag (torch.Tensor): The indices of detected objects in range.
+        
         Returns:
-            N_obj: Number of detected objects.
-            Ind_obj: Indices of detected objects.
-            noise_obj: Noise variances for detected objects.
-            CFAR_SNR: Signal-to-noise ratio for each detected object.
+            N_obj_valid: Number of valid detected objects.
+            Ind_obj_valid: Indices of valid detected objects.
+            noise_obj_valid: Noise variances for valid detected objects.
         """
 
         # Retrieve parameters for doppler CFAR
@@ -197,7 +192,7 @@ class CFARProcessor:
 
         # Initialize variables for valid objects
         cellNum, gapNum = self.detectObj['refWinSize'][0], self.detectObj['guardWinSize'][0]
-        N_obj_valid, Ind_obj_valid, noise_obj_an = 0, [], []
+        N_obj_valid, Ind_obj_valid, noise_obj_valid = 0, [], []
         gaptot = gapNum + cellNum
 
         # Process each detected object
@@ -222,13 +217,12 @@ class CFARProcessor:
                 cellInd = torch.cat([torch.arange(ind_range - gaptot, ind_range - gapNum), torch.arange(ind_range + gapNum + 1, ind_range + gaptot + 1)])
             
             # Add valid object features
-            # Compute noise variance for the detected object
             N_obj_valid += 1
             Ind_obj_valid.append(Ind_obj[i_obj])
-            noise_obj_an.append(torch.mean(torch.abs(input[cellInd, ind_doppler, :])**2, dim=0).view(self.detectObj['numAntenna']))
+            noise_obj_valid.append(torch.mean(torch.abs(input[cellInd, ind_doppler, :])**2, dim=0).view(self.detectObj['numAntenna']))
 
         # Return the detected objects
-        return N_obj_valid, Ind_obj_valid, noise_obj_an
+        return N_obj_valid, Ind_obj_valid, noise_obj_valid
 
 
 

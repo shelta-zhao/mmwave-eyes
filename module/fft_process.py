@@ -40,6 +40,9 @@ class FFTProcessor:
             torch.Tensor: The FFT result. Shape: (num_frames, range_fft_size, doppler_fft_size, num_rx, num_tx)
         """
 
+        # Convert input to tensor
+        input = torch.tensor(input, dtype=torch.complex64).to(self.device)
+
         # Perform Range FFT
         range_fft_output = self.range_fft(input)
 
@@ -54,7 +57,7 @@ class FFTProcessor:
         Perform Range FFT on the input data.
 
         Parameters:
-            input (np.ndarray): The input data to be transformed.
+            input (torch.Tensor): The input data to be transformed.
 
         Returns:
             torch.Tensor: The range FFT result. Shape: (num_frames, range_fft_size, num_chirps, num_rx, num_tx)
@@ -65,8 +68,6 @@ class FFTProcessor:
         dc_on, win_on = self.rangeFFTObj['dcOffsetCompEnable'], self.rangeFFTObj['rangeWindowEnable']
         scale_on, scale_factor = self.rangeFFTObj['FFTOutScaleOn'], self.rangeFFTObj['scaleFactorRange']
 
-        # Convert input to tensor
-        input = torch.tensor(input, dtype=torch.complex64).to(self.device)
         # Generate window coefficient
         win_coeff = torch.hann_window(input.shape[1] + 2, periodic=True).to(self.device)[1:-1]
         # Apply DC offset compensation
@@ -126,11 +127,12 @@ if __name__ == "__main__":
 
     # Get regular raw radar data
     regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)
-
+    input = torch.tensor(regular_data, dtype=torch.complex64).to(device)
+    
     # Test Range FFT & Doppler FFT
     fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
     
-    range_fft_output = fft_processor.range_fft(regular_data)
+    range_fft_output = fft_processor.range_fft(input)
     print(range_fft_output.shape)
     
     doppler_fft_out = fft_processor.doppler_fft(range_fft_output)
