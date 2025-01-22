@@ -15,7 +15,7 @@ from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
 from module.fft_process import FFTProcessor
 from utility.tool_box import reshape_fortran
-import matplotlib.pyplot as plt
+
 
 class CFARProcessor:
     def __init__(self, detectObj, device='cpu'):
