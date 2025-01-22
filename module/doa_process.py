@@ -15,6 +15,7 @@ from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
 from fft_process import FFTProcessor
 from cfar_process import CFARProcessor
+from utility.tool_box import peak_detect
 
 
 class DOAProcessor:
@@ -33,6 +34,8 @@ class DOAProcessor:
         # Get the DOA radar parameters
         self.d = DOAObj['antDis']
         self.D = torch.tensor(DOAObj['D'])
+        self.gamma = DOAObj['gamma']
+        self.sidelobeLevel_dB = DOAObj['sidelobeLevel_dB']
         self.doa_fft_size = DOAObj['DOAFFTSize']
         self.angles_DOA_azi = DOAObj['angles_DOA_azi']
         self.angles_DOA_ele = DOAObj['angles_DOA_ele']
@@ -54,12 +57,42 @@ class DOAProcessor:
         for detection_point in detection_results:
 
             current_bin_val = detection_point['bin_val']
+            DOAObj_est, doa_fft_result = self.DOA_beamformingFFT(current_bin_val)
 
-            self.DOA_beamformingFFT(current_bin_val)
+            # Initialize the list to store the output objects
+            numAoAObjCnt, doa_estimate_result = 0, []  
 
-            
+            # Iterate through the detected objects
+            if len(DOAObj_est) > 0:
+                return torch.tensor([])
+            else:
 
-        return 1
+                for angle_obj in range(doa_estimate_result.shape[1]):  # Iterate through the columns of DOA_angles
+                    numAoAObjCnt += 1
+                    doa_point = {}  # Use a dictionary to store each object's properties
+                    
+                    # Assign the values from the current_obj object to the dictionary
+                    doa_point['frameIdx'] = detection_point['frameIdx']
+                    doa_point['rangeInd'] = detection_point['rangeInd']
+                    doa_point['dopplerInd'] = detection_point['dopplerInd']
+                    doa_point['range'] = detection_point['range']
+                    doa_point['doppler_corr'] = detection_point['doppler_corr']
+                    doa_point['dopplerInd_org'] = detection_point['dopplerInd_org']
+                    doa_point['signalPower'] = detection_point['signalPower']
+                    doa_point['noise_var'] = detection_point['noise_var']
+                    doa_point['bin_val'] = detection_point['bin_val']
+                    doa_point['estSNR'] = detection_point['estSNR']
+                    doa_point['doppler_corr_overlap'] = detection_point['doppler_corr_overlap']
+                    doa_point['doppler_corr_FFT'] = detection_point['doppler_corr_FFT']
+                    
+                    # Set the DOA angle and spectrum for the current object
+                    doa_point['angles'] = angle_obj[:, angle_obj]  # Assuming DOA_angles is a numpy array
+                    doa_point['spectrum'] = doa_fft_result  # Assuming angle_sepc_2D_fft is already defined
+                    
+                    # Append the current object to the out list
+                    doa_estimate_result.append(doa_point)
+
+        return torch.tensor(doa_estimate_result)
     
     def DOA_beamformingFFT(self, bin_val):
         
@@ -73,22 +106,22 @@ class DOAProcessor:
         doa_fft_result = torch.fft.fftshift(torch.fft.fftshift(torch.fft.fft2(sig_2D, s=(self.doa_fft_size, self.doa_fft_size), dim=[0, 1]), dim=0), dim=1)
         
         # Generate the doa estimation results
-        obj_cnt, angleObj_est = 0, []
+        obj_cnt, DOAObj_est = 0, []
         spec_azi = sig_2D[self.D[self.antenna_azimuthonly, 0], self.D[self.antenna_azimuthonly, 1]].squeeze()
-        _, peakLoc_azi = DOA_BF_PeakDet_loc(torch.abs(spec_azi))
+        _, peakLoc_azi = peak_detect(torch.abs(spec_azi), self.gamma, self.sidelobeLevel_dB[0])
         
         if apertureLen_ele == 1:
             # Azimuth array only, no elevation antennas
             for ind in peakLoc_azi:
                 azi_est = torch.asin(self.wx_vec[ind] / (2 * torch.pi * self.d)) * 180 / torch.pi
                 if self.angles_DOA_azi[0] <= azi_est <= self.angles_DOA_azi[1]:
-                    angleObj_est.append([azi_est, 0, ind, 0])
+                    DOAObj_est.append([azi_est, 0, ind, 0])
                     obj_cnt += 1
         else:
             # Azimuth and elevation angle estimation
             for ind in peakLoc_azi:
                 spec_ele = torch.abs(doa_fft_result[ind, :])
-                peakLoc_elev = DOA_BF_PeakDet_loc(obj_sidelobeLevel_dB_elev, spec_ele)
+                peakLoc_elev = peak_detect(spec_ele, self.gamma, self.sidelobeLevel_dB[1])
                 
                 for peak in peakLoc_elev:
                     # Calculate angles
@@ -96,10 +129,10 @@ class DOAProcessor:
                     ele_est = torch.arcsin(self.wz_vec[peak] / (2 * torch.pi * self.d)) * 180 / torch.pi
                     
                     if (self.angles_DOA_azi[0] <= azi_est <= self.angles_DOA_azi[1] and self.angles_DOA_ele[0] <= ele_est <= self.angles_DOA_ele[1]):
-                        angleObj_est.append([azi_est, ele_est, ind, peak])
+                        DOAObj_est.append([azi_est, ele_est, ind, peak])
                         obj_cnt += 1
 
-        return angleObj_est
+        return DOAObj_est, doa_fft_result
 
         
 if __name__ == "__main__":

@@ -231,8 +231,7 @@ def generate_params(config_path, radar_type):
         'angles_DOA_azi': [-80, 80],
         'angles_DOA_ele': [-80, 80] if radar_type == "IWR6843ISK-ODS" else [-20, 20],
         'gamma': 10 ** (0.2 / 10),
-        'sidelobeLevel_dB_azim': 1,
-        'sidelobeLevel_dB_elev': 0,
+        'sidelobeLevel_dB': [1, 0],
         'dopplerFFTSize': doppler_fft_size
     }
     
