@@ -41,41 +41,47 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
     - peakLoc: Tensor containing the locations (indices) of the detected peaks
     """
 
-    input = input.flatten()  # Ensure input is a 1D tensor
-    N, peaks = input.shape[0], []
-    maxVal, maxLoc, absMaxValue, minVal = torch.tensor(0.0), 0, torch.tensor(0.0), torch.tensor(float('inf'))
 
+
+    minVal, maxVal, maxLoc, maxLoc_r, numMax,  = torch.tensor(float('inf'), dtype=torch.float64), torch.tensor(0.0), 0, 0, 0, 
+    absMaxValue, locateMax, initStage, maxData = torch.tensor(0.0), False, True, []
+
+    N = input.shape[0]
     for i in range(N):
-        currentVal = input[i]
+        i_loc = i % N  
+        currentVal = input[i_loc]
 
-        # Track the absolute maximum value
+        # Update maximum and minimum values
         absMaxValue = torch.max(absMaxValue, currentVal)
-
-        # Track the current max value and its location
         if currentVal > maxVal:
             maxVal = currentVal
-            maxLoc = i
-
-        # Track the minimum value
+            maxLoc = i_loc
+            maxLoc_r = i
+        
         minVal = torch.min(minVal, currentVal)
 
-        if currentVal > minVal * gamma:
-            if currentVal < maxVal / gamma:
-                peaks.append((maxLoc, maxVal, i - maxLoc))  # Store peak info
-                minVal = currentVal                         # Update minimum value for next peak detection
-                maxVal = currentVal                         # Reset maxVal for next peak search
+        if locateMax:
+            if currentVal < (maxVal / gamma):  # Peak found
+                maxData.append([maxLoc, maxVal, i - maxLoc_r, maxLoc_r])
+                numMax += 1
+                minVal = currentVal
+                locateMax = False
+        else:
+            if currentVal > minVal * gamma:    # Valley found
+                locateMax = True
+                maxVal = currentVal
+                if initStage:
+                    extendLoc = i
+                    initStage = False
 
-    # Filter out peaks below sidelobe level
-    valid_peaks = []
+    # Filter peaks based on sidelobe threshold
     absMaxValue_db = absMaxValue * (10 ** (-sidelobeLevel_dB / 10))
+    maxData = [data for data in maxData if data[1] >= absMaxValue_db]
 
-    for peak in peaks:
-        if peak[1] >= absMaxValue_db:  # Only consider peaks above sidelobe threshold
-            valid_peaks.append(peak)
+    # Convert results to torch tensors
+    if len(maxData) > 0:
+        maxData = torch.tensor(maxData)
+        peakVal = maxData[:, 1]
+        peakLoc = (maxData[:, 0] % N) + 1
 
-    # Extract peak values and locations
-    peakVal = torch.tensor([peak[1] for peak in valid_peaks], dtype=torch.float32)
-    peakLoc = torch.tensor([peak[0] for peak in valid_peaks], dtype=torch.long)
-
-    return peakVal, peakLoc
-
+        return peakVal.to(torch.float64), peakLoc.to(torch.long) 

@@ -144,13 +144,16 @@ class DOAProcessor:
         else:
             # Azimuth and elevation angle estimation
             for ind in peakLoc_azi:
-                spec_ele = torch.abs(doa_fft_result[ind, :])
+                spec_ele = torch.abs(doa_fft_result[ind - 1, :])
                 _, peakLoc_ele = peak_detect(spec_ele, self.gamma, self.sidelobeLevel_dB[1])
                 for peak in peakLoc_ele:
+                    print(ind, peak)
                     # Calculate angles
+                    print(self.wx_vec[ind], self.wz_vec[peak])
                     azi_est = torch.arcsin(self.wx_vec[ind] / (2 * torch.pi * self.d)) * -1 * 180 / torch.pi
                     ele_est = torch.arcsin(self.wz_vec[peak] / (2 * torch.pi * self.d)) * 180 / torch.pi
                     if (self.angles_DOA_azi[0] <= azi_est <= self.angles_DOA_azi[1] and self.angles_DOA_ele[0] <= ele_est <= self.angles_DOA_ele[1]):
+                        print(azi_est, ele_est)
                         DOAObj_est.append([azi_est, ele_est, ind, peak])
                         obj_cnt += 1
             
@@ -170,7 +173,7 @@ if __name__ == "__main__":
     radar_params = get_radar_params(config_path, data['radar'], load=True)
 
     # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)
+    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', timestamp=True)
 
     # Perform Range & Doppler FFT
     fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
@@ -178,7 +181,7 @@ if __name__ == "__main__":
     
     # Perform CFAR-CASO detection
     cfar_processor = CFARProcessor(radar_params['detectObj'], device)
-    detection_results = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
+    detection_results = cfar_processor.run(fft_output[25,:256,:,:,:], 0)
 
     # Test DOA Estimation
     doa_processor = DOAProcessor(radar_params['DOAObj'], device)

@@ -24,14 +24,15 @@ def PCD_display(point_cloud_data):
     x = point_cloud_data[:, 2]
     y = point_cloud_data[:, 3]
     z = point_cloud_data[:, 4]
-    signal_power = 10 * np.log(10, point_cloud_data[:, 9])
+    velocity = point_cloud_data[:, 6]
+    signal_power = 10 * np.log10(point_cloud_data[:, 9])
 
     # Create 3D scatter plot
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
 
     # Scatter plot with color based on frame indices
-    scatter = ax.scatter(x, y, z, c=signal_power, cmap='viridis', s=20, alpha=0.8)
+    scatter = ax.scatter(x, y, z, c=velocity, cmap='viridis', s=20, alpha=0.8)
 
     # Add a color bar
     cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
@@ -41,6 +42,9 @@ def PCD_display(point_cloud_data):
     ax.set_xlabel('X (meters)')
     ax.set_ylabel('Y (meters)')
     ax.set_zlabel('Z (meters)')
+    # ax.set_xlim((-2, 2))
+    # ax.set_ylim((0, 3))
+    # ax.set_zlim((0, 3))
 
     # Set title and show
     ax.set_title('3D Point Cloud')
