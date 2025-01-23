@@ -16,6 +16,7 @@ from handler.adc_load import get_regular_data
 from fft_process import FFTProcessor
 from cfar_process import CFARProcessor
 from utility.tool_box import peak_detect
+from utility.visualizer_box import PCD_display
 
 
 class DOAProcessor:
@@ -83,8 +84,39 @@ class DOAProcessor:
                     # Append the current object to the out list
                     doa_estimate_result.append(doa_point)
 
-        print(len(doa_estimate_result))
-        return doa_estimate_result
+        # Perform coordinate transformation
+        if not doa_estimate_result:
+            return np.array([])
+
+        point_cloud_data = np.zeros((len(doa_estimate_result), 14))  # Initialize the output array
+
+        for iobj, result in enumerate(doa_estimate_result):
+            # Coordinate transformation (x, y, z)
+            azimuth, elevation = np.deg2rad(result['angles'][0]), np.deg2rad(result['angles'][1])
+            point_cloud_data[iobj, 0] = result['frameIdx']                                    # Frame index
+            point_cloud_data[iobj, 1] = iobj + 1                                              # Object index (start from 1)
+            point_cloud_data[iobj, 2] = result['range'] * np.sin(azimuth) * np.cos(elevation) # X
+            point_cloud_data[iobj, 3] = result['range'] * np.cos(azimuth) * np.cos(elevation) # Y
+            point_cloud_data[iobj, 4] = result['range'] * np.sin(elevation)                   # Z
+
+            # Distance, velocity, azimuth, elevation
+            point_cloud_data[iobj, 5] = result['range']
+            point_cloud_data[iobj, 6] = result['doppler']
+            point_cloud_data[iobj, 7] = result['angles'][0]                                   # Azimuth
+            point_cloud_data[iobj, 8] = result['angles'][1]                                   # Elevation
+
+            # Noise, SNR
+            point_cloud_data[iobj, 9] = result['signalPower']
+            point_cloud_data[iobj, 10] = result['noise_var']
+            point_cloud_data[iobj, 11] = result['estSNR']
+
+            # RDM index
+            point_cloud_data[iobj, 12] = result['rangeInd']
+            point_cloud_data[iobj, 13] = result['dopplerInd']
+
+        PCD_display(point_cloud_data)
+        aaaa
+        return point_cloud_data
     
     def DOA_beamformingFFT(self, bin_val):
         
