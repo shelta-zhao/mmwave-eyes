@@ -30,12 +30,13 @@ class CFARProcessor:
         self.detectObj = detectObj
         self.device = device
 
-    def run(self, input):
+    def run(self, input, frameIdx):
         """
         Perform CFAR-CASO on the 2D FFT result.
 
         Parameters:
             input(torch.Tensor): FFT result. Shape: (range_fft_size, doppler_fft_size, num_rx, num_tx)
+            frameIdx(int): The frame index.
 
         Returns:
             torch.Tensor: CFAR result.        
@@ -74,6 +75,7 @@ class CFARProcessor:
                 for i_obj in range(N_obj_valid):
                     result = {}
 
+                    result['frameIdx'] = frameIdx
                     # Range & Doppler estimation
                     result['rangeInd'] = Ind_obj_valid[i_obj][0]  
                     result['range'] = result['rangeInd'] * self.detectObj['rangeBinSize']
@@ -303,7 +305,7 @@ if __name__ == "__main__":
     
     # Test CFAR-CASO
     cfar_processor = CFARProcessor(radar_params['detectObj'], device)
-    cfar_output = cfar_processor.run(fft_output[0,:256,:,:,:])
+    cfar_output = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
     
 
 
