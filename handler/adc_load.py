@@ -2,15 +2,18 @@
     Author        : Shelta Zhao(赵小棠)
     Email         : xiaotang_zhao@outlook.com
     Copyright (C) : NJU DisLab, 2025.
-    Description   : Load & Get regular radar data.
+    Description   : Load & Get regular raw radar data.
 """
 
 import os
 import yaml
+import sys
 import numpy as np
 import pandas as pd
 import concurrent.futures
 from datetime import datetime
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 
 
@@ -23,23 +26,24 @@ def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=
         readObj (dict): Dictionary containing radar parameters.
         frame_idx (str): Option to load all frames or a specific frame (start from 1). Default: 'all'.
         timestamp (bool): Option to extract timestamp from log file. Default: False.
-        save (bool): Option to save the regular data in  file. note : save only when frame_idx is 'all.
+        save (bool): Option to save the regular data in  file. note : save only when frame_idx is 'all'.
         load (bool): Option to load the regular data from raw data path.
 
     Returns:
         np.ndarray: Regular raw radar data. Shape: (num_frames, num_samples, num_chirps, num_rx, num_tx)
+        int: Extracted timestamp in milliseconds if timestamp is True.
     """
 
     # Load regular data if required
     if load:
         try:
-            regular_data = np.load(f"{data_path}/regular_data.npy")
+            regular_data = np.load(f"{data_path}/regular_raw_data.npy")
         except FileNotFoundError:
-            raise FileNotFoundError(f"File not found: {data_path}/data.npy")
+            raise FileNotFoundError(f"File not found: {data_path}/regular_raw_data.npy")
         except ValueError as e:
-            raise ValueError(f"Error loading numpy array from file: {data_path}/data.npy. Details: {e}")
+            raise ValueError(f"Error loading numpy array from file: {data_path}/regular_raw_data.npy. Details: {e}")
         except Exception as e:
-            raise RuntimeError(f"An unexpected error occurred while loading {data_path}/data.npy. Details: {e}")
+            raise RuntimeError(f"An unexpected error occurred while loading {data_path}/regular_raw_data.npy. Details: {e}")
     else:
         # Get bin file frames and file handles
         bin_file_frames, file_handles = get_num_frames(data_path, readObj['dataSizeOneFrame'])
@@ -65,7 +69,6 @@ def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=
         timestamp = get_timestamps(data_path)
         return regular_data, timestamp
     else:
-        # Return regular data
         return regular_data
 
 

@@ -2,7 +2,7 @@
     Author        : Shelta Zhao(赵小棠)
     Email         : xiaotang_zhao@outlook.com
     Copyright (C) : NJU DisLab, 2025.
-    Description   : Parses mmWave Studio config JSON files.
+    Description   : Parse mmWave Studio config JSON files.
 """
 
 import os
@@ -24,7 +24,6 @@ def get_radar_params(config_path, radar_type, save=False, load=False):
 
     Returns:
         dict: A dictionary containing the configuration parameters for the mmWave devices.
-        - radar: radar type
         - readObj: Parameters for reading the data from the binary files.
         - rangeFFTObj: Parameters for range processing.
         - dopplerFFTObj: Parameters for Doppler processing.
@@ -166,30 +165,23 @@ def generate_params(config_path, radar_type):
     # Range FFT parameters
     range_proc_params = {
         'radarPlatform': radar_type,
-        'numAntenna': num_virtual_rx_ant,
-        'numAdcSamplePerChirp': num_sample_per_chirp,
         'rangeFFTSize': range_fft_size,
-        'rangeBinSize': range_bin_size,
-        'rangeResolution': range_resolution,
-        'maxRange': max_range,
         'dcOffsetCompEnable': 1,
         'rangeWindowEnable': 1,
         'FFTOutScaleOn': 0,
         'scaleFactorRange': scale_factor[int(np.log2(range_fft_size)) - 4],
+        'rangeResolution': range_resolution,
+        'maxRange': max_range
     }
 
     # Doppler FFT parameters
     doppler_proc_params = {
-        'numAntenna': num_virtual_rx_ant,
-        'numDopplerLines': range_fft_size,
         'dopplerFFTSize': doppler_fft_size,
-        'velocityBinSize': velocity_bin_size,
-        'velocityResolution': velocity_resolution,
-        'maximumVelocity': maximum_velocity,
-        'numChirpsPerVirAnt': num_chirps_per_vir_ant,
         'dopplerWindowEnable': 0,
         'FFTOutScaleOn': 0,
         'scaleFactorDoppler': scale_factor[int(np.log2(doppler_fft_size)) - 4],
+        'velocityResolution': velocity_resolution,
+        'maximumVelocity': maximum_velocity
     }
 
     # CFAR-CASO parameters
@@ -200,7 +192,6 @@ def generate_params(config_path, radar_type):
         'guardWinSize': [3, 2],
         'K0': [5, 4],
         'maxEnable': 0,
-        'ratio_OS': 0.65,
         'rangeBinSize': range_bin_size,
         'velocityBinSize': velocity_bin_size,
         'dopplerFFTSize': doppler_fft_size,
@@ -210,19 +201,13 @@ def generate_params(config_path, radar_type):
         'numRxAnt': params['numRxToEnable'],
         'TDM_MIMO_numTX': params['numTxAnt'],
         'minDisApplyVmaxExtend': 10,
-        'applyVmaxExtend': 0,
-        'startFreq': params['startFreqConst'],
-        'chirpSlope': params['chirpSlope'],
-        'numADCSample': params['numADCSample'],
-        'adcSampleRate': params['adcSampleRate'],
-        'adcStartTimeConst': params['adcStartTimeConst']
+        'applyVmaxExtend': 0
     }
 
     # DOA parameters
     doa_params = {
         'D': D.tolist(),
         'DOAFFTSize': 180,
-        'numAntenna': num_virtual_rx_ant,
         'antenna_DesignFreq': params['startFreqConst'],
         'antPos': np.arange(num_virtual_rx_ant).tolist(),
         'antenna_azimuthonly': max(np.unique(D[:, 1]), key=lambda y: (np.sum(D[:, 1] == y), y)),
@@ -231,8 +216,7 @@ def generate_params(config_path, radar_type):
         'angles_DOA_azi': [-80, 80],
         'angles_DOA_ele': [-80, 80] if radar_type == "IWR6843ISK-ODS" else [-20, 20],
         'gamma': 10 ** (0.2 / 10),
-        'sidelobeLevel_dB': [1, 0],
-        'dopplerFFTSize': doppler_fft_size
+        'sidelobeLevel_dB': [1, 0]
     }
     
     # Combine all params
@@ -624,5 +608,5 @@ if __name__ == "__main__":
     if not radar_params:
         print("Invalid JSON files")
     else:
-        print(yaml.dump(radar_params))
+        print(radar_params)
 
