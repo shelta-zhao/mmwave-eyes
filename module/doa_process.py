@@ -72,7 +72,7 @@ class DOAProcessor:
             13. rangeInd: Range index
             14. dopplerInd: Doppler index
         """
-        
+
         # Initialize the list to store the output objects
         doa_estimate_result = []  
         for detection_point in detection_results:

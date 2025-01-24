@@ -114,7 +114,7 @@ class FFTProcessor:
         fft_output = fft_output * scale_factor if scale_on else fft_output
 
         # Return doppler fft result
-        return fft_output.cpu() if self.device == 'cuda' else fft_output
+        return fft_output
 
 
 if __name__ == "__main__":
