@@ -80,7 +80,7 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
     # Convert results to torch tensors
     peakVal, peakLoc = torch.tensor([], dtype=torch.float64), torch.tensor([], dtype=torch.long)
     if len(maxData) > 0:
-        peakVal = torch.tensor(maxData[:, 1], dtype=torch.float64)
-        peakLoc = torch.tensor(maxData[:, 0] % N, dtype=torch.long)
+        peakVal = maxData[:, 1].clone().detach().to(torch.float64)
+        peakLoc = (maxData[:, 0] % N).clone().detach().to(torch.long)
 
     return peakVal, peakLoc

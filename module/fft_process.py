@@ -9,6 +9,7 @@ import os
 import sys
 import yaml
 import torch
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
@@ -28,6 +29,9 @@ class FFTProcessor:
         self.rangeFFTObj = rangeFFTObj
         self.dopplerFFTObj = dopplerFFTObj
         self.device = device
+        
+        # Get the FFT parameters
+
 
     def run(self, input):
         """
@@ -80,7 +84,7 @@ class FFTProcessor:
         fft_output = fft_output * scale_factor if scale_on else fft_output
         # Phase compensation for IWR6843ISK-ODS
         if radar_type == 'IWR6843ISK-ODS':
-            fft_output[:, :, :, 1:3, :] *= torch.exp(-1j * torch.pi)
+            fft_output[:, :, :, 1:3, :] *= -1
 
         # Return range fft result
         return fft_output
@@ -121,9 +125,9 @@ if __name__ == "__main__":
     data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
     config_path = os.path.join("data/radar_config", data["config"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     # Get radar params
-    radar_params = get_radar_params(config_path, data['radar'], load=True)
+    radar_params = get_radar_params(config_path, data['radar'], load=False)
 
     # Get regular raw radar data
     regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)

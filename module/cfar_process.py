@@ -10,6 +10,7 @@ import sys
 import yaml
 import torch
 import numpy as np
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
@@ -39,7 +40,16 @@ class CFARProcessor:
             frameIdx(int): The frame index.
 
         Returns:
-            torch.Tensor: CFAR result.        
+            torch.Tensor: CFAR result.
+            - frameIdx: The frame index.
+            - rangeInd: The range index.
+            - range: The range value.
+            - dopplerInd: The Doppler index.
+            - doppler: The Doppler value.
+            - bin_val: The 2D FFT values for antennas.
+            - noise_var: The noise variance.
+            - signalPower: The signal power.
+            - estSNR: The estimated SNR.   
         """
 
         # Get non-coherent signal combination along the antenna array
@@ -49,12 +59,12 @@ class CFARProcessor:
         if self.detectObj['detectMethod'] == 1:
 
             # Perform CFAR-CASO Range
-            N_obj_Rag, Ind_obj_Rag, noise_obj_Rag, snr_obj_Rag = self.CFAR_CASO_Range(input)
+            N_obj_Rag, Ind_obj_Rag, noise_obj_Rag, _ = self.CFAR_CASO_Range(input)
 
             if N_obj_Rag > 0:
 
                 # Perform CFAR-CASO Doppler
-                N_obj_valid, Ind_obj_valid, noise_obj_valid = self.CFAR_CASO_Doppler(input, Ind_obj_Rag)
+                N_obj_valid, Ind_obj_valid, _ = self.CFAR_CASO_Doppler(input, Ind_obj_Rag)
 
                 # Use aggregate noise estimation for each obj
                 noise_obj_agg = []
@@ -120,7 +130,7 @@ class CFARProcessor:
             N_obj: Number of detected objects.
             Ind_obj: Indices of detected objects.
             noise_obj: Noise variances for detected objects.
-            CFAR_SNR: Signal-to-noise ratio for each detected object.
+            snr_obj: Signal-to-noise ratio for each detected object.
         """
 
         # Retrieve parameters for range CFAR
@@ -276,12 +286,6 @@ class CFARProcessor:
 
         # Return the detected objects
         return N_obj_valid, Ind_obj_valid, noise_obj_valid
-
-
-
-
-                    
-
 
 
 if __name__ == "__main__":

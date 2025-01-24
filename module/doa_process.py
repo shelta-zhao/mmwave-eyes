@@ -10,7 +10,7 @@ import sys
 import yaml
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
@@ -46,17 +46,33 @@ class DOAProcessor:
         self.wz_vec = torch.linspace(-torch.pi, torch.pi, self.doa_fft_size + 1)[:-1]
         self.antenna_azimuthonly = DOAObj['antenna_azimuthonly']
 
-    def run(self, detection_results):
+    def run(self, detection_results, save=False, load=False):
         """
         Run the DOA Estimation on the given detection results.
 
         Parameters:
             detection_results (list): The detection results from CFAR Processor.
+            save (bool): Whether to save the results to a file.
+            load (bool): Whether to load the results from a file.
 
         Returns:
-            doa_results (list): The DOA estimation results.
+            point cloud data (list): The DOA estimation results.
+            1. frameIdx: Frame index
+            2. objectIdx: Object index
+            3. x: X coordinate
+            4. y: Y coordinate
+            5. z: Z coordinate
+            6. distance: Distance
+            7. velocity: Velocity
+            8. azimuth: Azimuth angle
+            9. elevation: Elevation angle
+            10. signalPower: Signal power
+            11. noise_var: Noise variance
+            12. estSNR: Estimated SNR
+            13. rangeInd: Range index
+            14. dopplerInd: Doppler index
         """
-
+        
         # Initialize the list to store the output objects
         doa_estimate_result = []  
         for detection_point in detection_results:
@@ -116,8 +132,6 @@ class DOAProcessor:
             point_cloud_data[iobj, 12] = result['rangeInd']
             point_cloud_data[iobj, 13] = result['dopplerInd']
 
-        PCD_display(point_cloud_data)
-        aaaa
         return point_cloud_data
     
     def DOA_beamformingFFT(self, bin_val):
@@ -175,7 +189,7 @@ if __name__ == "__main__":
     radar_params = get_radar_params(config_path, data['radar'], load=False)
 
     # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', load=True, timestamp=True)
+    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', load=False, timestamp=True)
 
     # Perform Range & Doppler FFT
     fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
@@ -183,8 +197,9 @@ if __name__ == "__main__":
     
     # Perform CFAR-CASO detection
     cfar_processor = CFARProcessor(radar_params['detectObj'], device)
-    detection_results = cfar_processor.run(fft_output[25,:256,:,:,:], 0)
+    detection_results = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
 
     # Test DOA Estimation
     doa_processor = DOAProcessor(radar_params['DOAObj'], device)
     doa_output = doa_processor.run(detection_results)
+    print(len(doa_output))
