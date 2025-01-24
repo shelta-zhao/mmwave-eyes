@@ -202,4 +202,5 @@ if __name__ == "__main__":
     # Test DOA Estimation
     doa_processor = DOAProcessor(radar_params['DOAObj'], device)
     doa_output = doa_processor.run(detection_results)
+    PCD_display(doa_output)
     print(len(doa_output))
