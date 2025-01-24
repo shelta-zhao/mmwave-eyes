@@ -1,6 +1,7 @@
 #  File Ignore Addition
-!data/adc_data/data_example/
-!data/radar_config/config_example/
+!data/adc_data/data_example/*.bin
+!data/adc_data/data_example/*.csv
+!data/radar_config/config_example/*.json
 *.jpg
 *.png
 *.bin
