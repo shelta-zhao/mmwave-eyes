@@ -10,6 +10,7 @@ import sys
 import yaml
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
@@ -43,7 +44,8 @@ class DOAProcessor:
         self.antenna_azimuthonly = DOAObj['antenna_azimuthonly']
         self.wx_vec = torch.linspace(-torch.pi, torch.pi, self.doa_fft_size + 1)[:-1]
         self.wz_vec = torch.linspace(-torch.pi, torch.pi, self.doa_fft_size + 1)[:-1]
-    
+        self.antenna_azimuthonly = DOAObj['antenna_azimuthonly']
+
     def run(self, detection_results):
         """
         Run the DOA Estimation on the given detection results.
@@ -57,7 +59,6 @@ class DOAProcessor:
 
         # Initialize the list to store the output objects
         doa_estimate_result = []  
-
         for detection_point in detection_results:
 
             current_bin_val = detection_point['bin_val']
@@ -87,8 +88,9 @@ class DOAProcessor:
         # Perform coordinate transformation
         if not doa_estimate_result:
             return np.array([])
-
-        point_cloud_data = np.zeros((len(doa_estimate_result), 14))  # Initialize the output array
+        
+        # Initialize the output array
+        point_cloud_data = np.zeros((len(doa_estimate_result), 14))
 
         for iobj, result in enumerate(doa_estimate_result):
             # Coordinate transformation (x, y, z)
@@ -127,11 +129,12 @@ class DOAProcessor:
         sig_2D[self.D[:, 0], self.D[:, 1]] = bin_val
 
         # Perform 2D Angle FFT
-        doa_fft_result = torch.fft.fftshift(torch.fft.fftshift(torch.fft.fft2(sig_2D, s=(self.doa_fft_size, self.doa_fft_size), dim=[0, 1]), dim=0), dim=1)
-        
+        angle_sepc_1D_fft = torch.fft.fftshift(torch.fft.fft(sig_2D, n=self.doa_fft_size, dim=0), dim = 0)
+        angle_sepc_2D_fft = torch.fft.fftshift(torch.fft.fft(angle_sepc_1D_fft, n=self.doa_fft_size, dim=1), dim=1)
+
         # Generate the doa estimation results
         obj_cnt, DOAObj_est = 0, []
-        spec_azi = sig_2D[self.D[self.antenna_azimuthonly, 0], self.D[self.antenna_azimuthonly, 1]].squeeze()
+        spec_azi = torch.abs(angle_sepc_1D_fft[:, self.antenna_azimuthonly])
         _, peakLoc_azi = peak_detect(torch.abs(spec_azi), self.gamma, self.sidelobeLevel_dB[0])
 
         if apertureLen_ele == 1:
@@ -144,20 +147,19 @@ class DOAProcessor:
         else:
             # Azimuth and elevation angle estimation
             for ind in peakLoc_azi:
-                spec_ele = torch.abs(doa_fft_result[ind - 1, :])
+                spec_ele = torch.abs(angle_sepc_2D_fft[ind, :])
                 _, peakLoc_ele = peak_detect(spec_ele, self.gamma, self.sidelobeLevel_dB[1])
+
                 for peak in peakLoc_ele:
-                    print(ind, peak)
                     # Calculate angles
-                    print(self.wx_vec[ind], self.wz_vec[peak])
                     azi_est = torch.arcsin(self.wx_vec[ind] / (2 * torch.pi * self.d)) * -1 * 180 / torch.pi
                     ele_est = torch.arcsin(self.wz_vec[peak] / (2 * torch.pi * self.d)) * 180 / torch.pi
+
                     if (self.angles_DOA_azi[0] <= azi_est <= self.angles_DOA_azi[1] and self.angles_DOA_ele[0] <= ele_est <= self.angles_DOA_ele[1]):
-                        print(azi_est, ele_est)
                         DOAObj_est.append([azi_est, ele_est, ind, peak])
                         obj_cnt += 1
             
-        return DOAObj_est, doa_fft_result
+        return DOAObj_est, angle_sepc_2D_fft
 
         
 if __name__ == "__main__":
@@ -170,10 +172,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Get radar params
-    radar_params = get_radar_params(config_path, data['radar'], load=True)
+    radar_params = get_radar_params(config_path, data['radar'], load=False)
 
     # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', timestamp=True)
+    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', load=True, timestamp=True)
 
     # Perform Range & Doppler FFT
     fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)

@@ -6,7 +6,7 @@
 """
 
 import torch
-
+from itertools import count
 
 def reshape_fortran(x, shape):
     """
@@ -41,13 +41,13 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
     - peakLoc: Tensor containing the locations (indices) of the detected peaks
     """
 
-
-
-    minVal, maxVal, maxLoc, maxLoc_r, numMax,  = torch.tensor(float('inf'), dtype=torch.float64), torch.tensor(0.0), 0, 0, 0, 
-    absMaxValue, locateMax, initStage, maxData = torch.tensor(0.0), False, True, []
+    minVal, maxVal, maxLoc, maxLoc_r = torch.tensor(float('inf'), dtype=torch.float64), torch.tensor(0.0), 0, 0
+    absMaxValue, locateMax, initStage, maxData, extendLoc = torch.tensor(0.0), False, True, [], 0
 
     N = input.shape[0]
-    for i in range(N):
+    for i in count(0):
+        if i >= N + extendLoc - 1:
+            break
         i_loc = i % N  
         currentVal = input[i_loc]
 
@@ -63,7 +63,6 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
         if locateMax:
             if currentVal < (maxVal / gamma):  # Peak found
                 maxData.append([maxLoc, maxVal, i - maxLoc_r, maxLoc_r])
-                numMax += 1
                 minVal = currentVal
                 locateMax = False
         else:
@@ -76,12 +75,12 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
 
     # Filter peaks based on sidelobe threshold
     absMaxValue_db = absMaxValue * (10 ** (-sidelobeLevel_dB / 10))
-    maxData = [data for data in maxData if data[1] >= absMaxValue_db]
+    maxData = torch.tensor([data for data in maxData if data[1] >= absMaxValue_db])
 
     # Convert results to torch tensors
+    peakVal, peakLoc = torch.tensor([], dtype=torch.float64), torch.tensor([], dtype=torch.long)
     if len(maxData) > 0:
-        maxData = torch.tensor(maxData)
-        peakVal = maxData[:, 1]
-        peakLoc = (maxData[:, 0] % N) + 1
+        peakVal = torch.tensor(maxData[:, 1], dtype=torch.float64)
+        peakLoc = torch.tensor(maxData[:, 0] % N, dtype=torch.long)
 
-        return peakVal.to(torch.float64), peakLoc.to(torch.long) 
+    return peakVal, peakLoc
