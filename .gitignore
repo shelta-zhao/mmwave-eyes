@@ -2,9 +2,6 @@
 *.jpg
 *.png
 *.mat
-*.bin
-*.csv
-*.json
 *.DS_Store
 
 # Byte-compiled / optimized / DLL files
