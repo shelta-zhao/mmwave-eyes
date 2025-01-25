@@ -120,7 +120,7 @@ if __name__ == "__main__":
     
     # Parse data config & Get radar params
     with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)
+        data = yaml.safe_load(file)[0]
     data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
     config_path = os.path.join("data/radar_config", data["config"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

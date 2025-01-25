@@ -38,6 +38,7 @@ def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=
     if load:
         try:
             regular_data = np.load(f"{data_path}/regular_raw_data.npy")
+            print(f"Regular data has been loaded from {data_path}/regular_raw_data.npy.")
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {data_path}/regular_raw_data.npy")
         except ValueError as e:
@@ -59,10 +60,11 @@ def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=
 
         # Save the regular data if required
         if save and frame_idx == 'all':
-            file_path = f"{data_path}/regular_data.npy"
+            file_path = f"{data_path}/regular_raw_data.npy"
             if os.path.exists(file_path):
                 os.remove(file_path)
             np.save(file_path, regular_data)
+            print(f"Regular data has been saved to {file_path}.")
 
     # Extract timestamp if required
     if timestamp:
@@ -285,7 +287,7 @@ if __name__  == "__main__":
 
     # Parse data config & Get readObj
     with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)
+        data = yaml.safe_load(file)[0]
     data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
     config_path = os.path.join("data/radar_config", data["config"])
     readObj = get_radar_params(config_path, data['radar'])['readObj']

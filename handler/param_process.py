@@ -36,6 +36,7 @@ def get_radar_params(config_path, radar_type, save=False, load=False):
         try:
             with open(f"{config_path}/radar_params.yaml", "r") as file:
                 radar_params = yaml.safe_load(file)
+            print(f"Radar params have been loaded from {config_path}/radar_params.yaml.")
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {config_path}/radar_params.yaml")
         except yaml.YAMLError as e:
@@ -49,6 +50,7 @@ def get_radar_params(config_path, radar_type, save=False, load=False):
         # Save params if required
         if save:
             save_params(radar_params, config_path)
+            print(f"Radar params has been saved to {config_path}/radar_params.yaml.")
     
     # Return radar params
     return radar_params
@@ -194,6 +196,7 @@ def generate_params(config_path, radar_type):
         'maxEnable': 0,
         'rangeBinSize': range_bin_size,
         'velocityBinSize': velocity_bin_size,
+        'rangeFFTSize': range_fft_size,
         'dopplerFFTSize': doppler_fft_size,
         'powerThre': 0,
         'discardCellLeft': 0,
@@ -210,7 +213,7 @@ def generate_params(config_path, radar_type):
         'DOAFFTSize': 180,
         'antenna_DesignFreq': params['startFreqConst'],
         'antPos': np.arange(num_virtual_rx_ant).tolist(),
-        'antenna_azimuthonly': max(np.unique(D[:, 1]), key=lambda y: (np.sum(D[:, 1] == y), y)),
+        'antenna_azimuthonly': int(max(np.unique(D[:, 1]), key=lambda y: (np.sum(D[:, 1] == y), y))),
         'antDis': 0.5 * carrier_frequency / params['startFreqConst'],
         'method': 1,
         'angles_DOA_azi': [-80, 80],
@@ -600,7 +603,7 @@ if __name__ == "__main__":
     
     # Parse radar config
     with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)
+        data = yaml.safe_load(file)[0]
     config_path = os.path.join("data/radar_config", data["config"])
     
     # Test generate params

@@ -301,7 +301,7 @@ if __name__ == "__main__":
     
     # Parse data config & Get radar params
     with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)
+        data = yaml.safe_load(file)[0]
     data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
     config_path = os.path.join("data/radar_config", data["config"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -319,3 +319,4 @@ if __name__ == "__main__":
     # Test CFAR-CASO
     cfar_processor = CFARProcessor(radar_params['detectObj'], device)
     cfar_output = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
+    print(cfar_output.shape)

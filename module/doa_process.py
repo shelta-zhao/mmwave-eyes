@@ -14,8 +14,8 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
 from handler.adc_load import get_regular_data
-from fft_process import FFTProcessor
-from cfar_process import CFARProcessor
+from module.fft_process import FFTProcessor
+from module.cfar_process import CFARProcessor
 from utility.tool_box import peak_detect
 from utility.visualizer_box import PCD_display
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
     # Parse data config & Get radar params
     with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)
+        data = yaml.safe_load(file)[0]
     data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
     config_path = os.path.join("data/radar_config", data["config"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
