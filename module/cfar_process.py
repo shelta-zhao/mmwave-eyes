@@ -41,15 +41,15 @@ class CFARProcessor:
 
         Returns:
             torch.Tensor: CFAR result.
-            - frameIdx: The frame index.
-            - rangeInd: The range index.
-            - range: The range value.
-            - dopplerInd: The Doppler index.
-            - doppler: The Doppler value.
-            - bin_val: The 2D FFT values for antennas.
-            - noise_var: The noise variance.
-            - signalPower: The signal power.
-            - estSNR: The estimated SNR.   
+            - 1 frameIdx: The frame index.
+            - 2 rangeInd: The range index.
+            - 3 range: The range value.
+            - 4 dopplerInd: The Doppler index.
+            - 5 doppler: The Doppler value.
+            - 6 bin_val: The 2D FFT values for antennas.
+            - 7 noise_var: The noise variance.
+            - 8 signalPower: The signal power.
+            - 9 estSNR: The estimated SNR.   
         """
 
         # Get non-coherent signal combination along the antenna array
@@ -67,7 +67,7 @@ class CFARProcessor:
                 N_obj_valid, Ind_obj_valid, _ = self.CFAR_CASO_Doppler(input, Ind_obj_Rag)
 
                 # Use aggregate noise estimation for each obj
-                noise_obj_agg = []
+                noise_obj_agg = torch.tensor([], device=self.device)
                 for i_obj in range(N_obj_valid):
 
                     # Extract range and Doppler indices for the current object
@@ -78,41 +78,50 @@ class CFARProcessor:
                     mask = (Ind_obj_Rag[:, 0] == indx1R) & (Ind_obj_Rag[:, 1] == indx1D)
                     if mask.any():
                         noiseInd = torch.nonzero(mask, as_tuple=False).squeeze(1)
-                        noise_obj_agg.append(noise_obj_Rag[noiseInd])
-
+                        noise_obj_agg = torch.cat((noise_obj_agg, noise_obj_Rag[noiseInd].unsqueeze(0)))
+            
                 # Generate detection results
-                detection_results = []
+                detection_results = torch.zeros((N_obj_valid, 8 + 2 * self.detectObj['numRxAnt'] * self.detectObj['TDM_MIMO_numTX']), device=self.device, dtype=torch.float32)
                 for i_obj in range(N_obj_valid):
-                    result = {}
 
-                    result['frameIdx'] = frameIdx
-                    # Range & Doppler estimation
-                    result['rangeInd'] = Ind_obj_valid[i_obj][0]  
-                    result['range'] = result['rangeInd'] * self.detectObj['rangeBinSize']
-                    result['dopplerInd'] = Ind_obj_valid[i_obj][1]
-                    result['doppler'] = (result['dopplerInd'] - self.detectObj['dopplerFFTSize'] / 2) * self.detectObj['velocityBinSize']
-                    # 2D FFT values for antennas
-                    result['bin_val'] = input[Ind_obj_valid[i_obj][0], Ind_obj_valid[i_obj][1], :].squeeze()
-                    # Noise variance & SNR
-                    result['noise_var'] = noise_obj_agg[i_obj]
-                    result['signalPower'] = torch.mean(torch.abs(result['bin_val']) ** 2).item()
-                    # Estimated SNR
-                    signal_power = torch.sum(torch.abs(result['bin_val']) ** 2).item()
-                    noise_power = torch.sum(result['noise_var']).item()
-                    result['estSNR'] = signal_power / noise_power if noise_power > 0 else float('inf')
-                    
-                    # Phase correction for TDM MIMO
-                    sig_bin = torch.zeros_like(result['bin_val'], dtype=torch.complex64)
-                    deltaPhi = 2 * torch.pi * (result['dopplerInd'] - self.detectObj['dopplerFFTSize'] / 2) / (self.detectObj['TDM_MIMO_numTX'] * self.detectObj['dopplerFFTSize'])
+                    # Extract range and Doppler indices
+                    range_ind = Ind_obj_valid[i_obj][0].item()
+                    doppler_ind = Ind_obj_valid[i_obj][1].item()
 
-                    # Apply phase correction for each TX antenna
+                    # Compute range and Doppler values
+                    range_val = range_ind * self.detectObj['rangeBinSize']
+                    doppler_val = (doppler_ind - self.detectObj['dopplerFFTSize'] / 2) * self.detectObj['velocityBinSize']
+
+                    # Extract bin_val and noise variance
+                    bin_val = input[range_ind, doppler_ind, :].squeeze()
+                    noise_var = noise_obj_agg[i_obj]
+
+                    # Compute signal power and noise power
+                    signal_power = torch.sum(torch.abs(bin_val) ** 2).item()
+                    noise_power = torch.sum(noise_var).item()
+                    est_snr = signal_power / noise_power if noise_power > 0 else float('inf')
+
+                    # Perform phase correction for TDM MIMO
+                    deltaPhi = 2 * torch.pi * (doppler_ind - self.detectObj['dopplerFFTSize'] / 2) / (self.detectObj['TDM_MIMO_numTX'] * self.detectObj['dopplerFFTSize'])
+                    sig_bin = torch.zeros_like(bin_val, dtype=torch.complex64)
                     for i_TX in range(self.detectObj['TDM_MIMO_numTX']):
-                        RX_ID = slice((i_TX) * self.detectObj['numRxAnt'], (i_TX + 1) * self.detectObj['numRxAnt'])
-                        sig_bin[RX_ID] = result['bin_val'][RX_ID] * np.exp(-1j * (i_TX) * deltaPhi)
-                    result['bin_val'] = sig_bin
+                        RX_ID = slice(i_TX * self.detectObj['numRxAnt'], (i_TX + 1) * self.detectObj['numRxAnt'])
+                        deltaPhi_iTX = torch.tensor(i_TX * deltaPhi, device=self.device)
+                        sig_bin[RX_ID] = bin_val[RX_ID] * (torch.cos(deltaPhi_iTX) - 1j * torch.sin(deltaPhi_iTX))
 
-                    # Append the result to the list
-                    detection_results.append(result)
+                    # Fill the result tensor
+                    detection_results[i_obj, 0] = frameIdx          # frameIdx
+                    detection_results[i_obj, 1] = range_ind         # rangeInd
+                    detection_results[i_obj, 2] = range_val         # range
+                    detection_results[i_obj, 3] = doppler_ind       # dopplerInd
+                    detection_results[i_obj, 4] = doppler_val       # doppler
+                    detection_results[i_obj, 5] = noise_power       # noise_var
+                    detection_results[i_obj, 6] = signal_power      # signalPower
+                    detection_results[i_obj, 7] = est_snr           # estSNR
+                    
+                    # Store real and imaginary parts of sig_bin in separate columns
+                    detection_results[i_obj, 8:8 + sig_bin.numel()] = sig_bin.real.view(-1)
+                    detection_results[i_obj, 8 + sig_bin.numel():] = sig_bin.imag.view(-1)
 
                 # Return the detection results
                 return detection_results
@@ -141,7 +150,7 @@ class CFARProcessor:
         gaptot = gapNum + cellNum
 
         # Get return features for detected objects
-        N_obj, Ind_obj, noise_obj, snr_obj = 0, [], [], []
+        N_obj, Ind_obj, noise_obj, snr_obj = 0, torch.tensor([], dtype=torch.long, device=self.device), torch.tensor([], device=self.device), torch.tensor([], device=self.device)
 
         # Perform CFAR detection for each doppler bin
         for k in range(N_Pul):
@@ -167,12 +176,12 @@ class CFARProcessor:
                 if vec[j + gaptot] > K0 * cellave1:
                     if self.detectObj['maxEnable'] == 0 or vec[j + gaptot] > torch.max(vec[cellInda[0]:cellIndb[-1] + 1]):
                         N_obj += 1                                       # Increment object count
-                        Ind_obj.append([j + discardCellLeft, k])         # Store object indices
-                        noise_obj.append(cellave1)                       # Store noise variance
-                        snr_obj.append(vec[j + gaptot] / cellave1)       # Store SNR
+                        Ind_obj = torch.cat((Ind_obj, torch.tensor([j + discardCellLeft, k], device = self.device).unsqueeze(0)))
+                        noise_obj = torch.cat((noise_obj, cellave1.unsqueeze(0)))
+                        snr_obj = torch.cat((snr_obj, torch.tensor([vec[j + gaptot] / cellave1], device = self.device)))
 
         # Return the detected objects
-        return N_obj, torch.tensor(Ind_obj), torch.tensor(noise_obj), torch.tensor(snr_obj)
+        return N_obj, Ind_obj, noise_obj, snr_obj
 
     def CFAR_CASO_Doppler(self, input, Ind_obj_Rag):
         """
@@ -200,7 +209,7 @@ class CFARProcessor:
         M_Samp, N_Pul = sig_integrate.shape[0], sig_integrate.shape[1]
 
         # Get return features for detected objects
-        Ind_obj = []
+        Ind_obj = torch.tensor([], dtype=torch.long, device=self.device)
         
         # Perform CFAR detection for each range bin
         for k in range(M_Samp):
@@ -215,8 +224,8 @@ class CFARProcessor:
             # vec = torch.cat((vec[:gaptot], vec, vec[-gaptot:])) # This is the correct one
 
             # Start to process
-            ind_loc_all = []
-            ind_loc_Dop = []
+            ind_loc_all = torch.tensor([], dtype=torch.long, device=self.device)
+            ind_loc_Dop = torch.tensor([], dtype=torch.long, device=self.device)
 
             for j in range(N_Pul - discardCellLeft - discardCellRight):
                 # Get the indices of the reference cells
@@ -234,16 +243,16 @@ class CFARProcessor:
                 if vec[j + gaptot] > K0 * cellave1:
                     if self.detectObj['maxEnable'] == 0 or vec[j + gaptot] > torch.max(vec[cellInda[0]:cellIndb[-1] + 1]):
                         if torch.isin(indR, j).any():
-                            ind_loc_all.append(range_bin_index)
-                            ind_loc_Dop.append(j+discardCellLeft)
+                            ind_loc_all = torch.cat((ind_loc_all, torch.tensor([range_bin_index], device=self.device)))
+                            ind_loc_Dop = torch.cat((ind_loc_Dop, torch.tensor([j + discardCellLeft], device=self.device)))
 
             # Check if ind_loc_all is not empty
-            if ind_loc_all:
+            if ind_loc_all.numel() > 0:
                 # Create ind_obj_0 with 2 columns
-                ind_obj_0 = list(zip(ind_loc_all, ind_loc_Dop))
+                ind_obj_0 = torch.stack((ind_loc_all, ind_loc_Dop), dim=1)
                 
                 # If Ind_obj is empty, initialize it with ind_obj_0
-                if not Ind_obj:
+                if Ind_obj.numel() == 0:
                     Ind_obj = ind_obj_0
                 else:
                     # Avoid duplicated detection points by checking ind_obj_0_sum
@@ -251,11 +260,11 @@ class CFARProcessor:
                     Ind_obj_sum = {loc + 10000 * dop for loc, dop in Ind_obj}
 
                     # Add only non-duplicate elements
-                    Ind_obj.extend(ind for ind, ind_sum in zip(ind_obj_0, ind_obj_0_sum) if ind_sum not in Ind_obj_sum)
+                    Ind_obj = torch.cat((Ind_obj, torch.stack([ind for ind, ind_sum in zip(ind_obj_0, ind_obj_0_sum) if ind_sum not in Ind_obj_sum]).to(self.device)))
 
         # Initialize variables for valid objects
         cellNum, gapNum = self.detectObj['refWinSize'][0], self.detectObj['guardWinSize'][0]
-        N_obj_valid, Ind_obj_valid, noise_obj_valid = 0, [], []
+        N_obj_valid, Ind_obj_valid, noise_obj_valid = 0, torch.tensor([], dtype=torch.long, device=self.device), torch.tensor([], device=self.device)
         gaptot = gapNum + cellNum
 
         # Process each detected object
@@ -281,8 +290,8 @@ class CFARProcessor:
             
             # Add valid object features
             N_obj_valid += 1
-            Ind_obj_valid.append(Ind_obj[i_obj])
-            noise_obj_valid.append(torch.mean(torch.abs(input[cellInd, ind_doppler, :])**2, dim=0).view(self.detectObj['numAntenna']))
+            Ind_obj_valid = torch.cat((Ind_obj_valid, torch.tensor(Ind_obj[i_obj], device=self.device).unsqueeze(0)))
+            noise_obj_valid = torch.cat((noise_obj_valid, torch.mean(torch.abs(input[ind_range, ind_doppler, :])**2, dim=0).unsqueeze(0)))
 
         # Return the detected objects
         return N_obj_valid, Ind_obj_valid, noise_obj_valid
@@ -298,7 +307,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Get radar params
-    radar_params = get_radar_params(config_path, data['radar'], load=True)
+    radar_params = get_radar_params(config_path, data['radar'], load=False)
 
     # Get regular raw radar data
     regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)
