@@ -609,4 +609,3 @@ if __name__ == "__main__":
         print("Invalid JSON files")
     else:
         print(radar_params)
-

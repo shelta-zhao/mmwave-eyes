@@ -8,6 +8,7 @@
 import torch
 from itertools import count
 
+
 def reshape_fortran(x, shape):
     """
     Reshape a tensor in a Fortran-style (column-major order) while maintaining PyTorch's row-major default.
@@ -42,7 +43,7 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
     """
 
     minVal, maxVal, maxLoc, maxLoc_r = torch.tensor(float('inf'), dtype=torch.float64), torch.tensor(0.0), 0, 0
-    absMaxValue, locateMax, initStage, maxData, extendLoc = torch.tensor(0.0), False, True, [], 0
+    absMaxValue, locateMax, initStage, maxData, extendLoc = torch.tensor(0.0), False, True, torch.tensor([]), 0
 
     N = input.shape[0]
     for i in count(0):
@@ -62,7 +63,7 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
 
         if locateMax:
             if currentVal < (maxVal / gamma):  # Peak found
-                maxData.append([maxLoc, maxVal, i - maxLoc_r, maxLoc_r])
+                maxData = torch.cat((maxData, torch.tensor([[maxLoc, maxVal, i - maxLoc_r, maxLoc_r]])), dim=0)
                 minVal = currentVal
                 locateMax = False
         else:
@@ -75,7 +76,7 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
 
     # Filter peaks based on sidelobe threshold
     absMaxValue_db = absMaxValue * (10 ** (-sidelobeLevel_dB / 10))
-    maxData = torch.tensor([data for data in maxData if data[1] >= absMaxValue_db])
+    maxData = maxData[maxData[:, 1] >= absMaxValue_db] if len(maxData) > 0 else maxData
 
     # Convert results to torch tensors
     peakVal, peakLoc = torch.tensor([], dtype=torch.float64), torch.tensor([], dtype=torch.long)

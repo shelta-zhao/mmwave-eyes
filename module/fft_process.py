@@ -32,7 +32,6 @@ class FFTProcessor:
         
         # Get the FFT parameters
 
-
     def run(self, input):
         """
         Perform Range & Doppler FFT on the input data.

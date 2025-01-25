@@ -40,16 +40,16 @@ class CFARProcessor:
             frameIdx(int): The frame index.
 
         Returns:
-            torch.Tensor: CFAR result.
-            - 1 frameIdx: The frame index.
-            - 2 rangeInd: The range index.
-            - 3 range: The range value.
-            - 4 dopplerInd: The Doppler index.
-            - 5 doppler: The Doppler value.
-            - 6 bin_val: The 2D FFT values for antennas.
-            - 7 noise_var: The noise variance.
-            - 8 signalPower: The signal power.
-            - 9 estSNR: The estimated SNR.   
+            torch.Tensor: detection result.
+            - 0 frameIdx: The frame index.
+            - 1 rangeInd: The range index.
+            - 2 range: The range value.
+            - 3 dopplerInd: The Doppler index.
+            - 4 doppler: The Doppler value.
+            - 5 noise_var: The noise variance.
+            - 6 signalPower: The signal power.
+            - 7 estSNR: The estimated SNR.   
+            - 8~end: The real and imaginary parts of the signal bin.
         """
 
         # Get non-coherent signal combination along the antenna array
@@ -290,7 +290,7 @@ class CFARProcessor:
             
             # Add valid object features
             N_obj_valid += 1
-            Ind_obj_valid = torch.cat((Ind_obj_valid, torch.tensor(Ind_obj[i_obj], device=self.device).unsqueeze(0)))
+            Ind_obj_valid = torch.cat((Ind_obj_valid, Ind_obj[i_obj].clone().detach().unsqueeze(0).to(self.device)))
             noise_obj_valid = torch.cat((noise_obj_valid, torch.mean(torch.abs(input[ind_range, ind_doppler, :])**2, dim=0).unsqueeze(0)))
 
         # Return the detected objects
@@ -319,10 +319,3 @@ if __name__ == "__main__":
     # Test CFAR-CASO
     cfar_processor = CFARProcessor(radar_params['detectObj'], device)
     cfar_output = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
-    
-
-
-
-
-    
-
