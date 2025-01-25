@@ -199,7 +199,7 @@ if __name__ == "__main__":
     
     # Perform CFAR-CASO detection
     cfar_processor = CFARProcessor(radar_params['detectObj'], device)
-    detection_results = cfar_processor.run(fft_output[56,:256,:,:,:], 0)
+    detection_results = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
 
     # Test DOA Estimation
     doa_processor = DOAProcessor(radar_params['DOAObj'], device)

@@ -25,7 +25,6 @@ def PCD_display(point_cloud_data):
     y = point_cloud_data[:, 3]
     z = point_cloud_data[:, 4]
     velocity = point_cloud_data[:, 6]
-    signal_power = 10 * np.log10(point_cloud_data[:, 9])
 
     # Create 3D scatter plot
     fig = plt.figure(figsize=(10, 8))
@@ -36,7 +35,8 @@ def PCD_display(point_cloud_data):
 
     # Add a color bar
     cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
-    cbar.set_label('Signal Power', rotation=270, labelpad=15)
+    cbar.set_label('Velocity', rotation=270, labelpad=15)
+    scatter.set_clim(-3, 3)
 
     # Set axis labels
     ax.set_xlabel('X (meters)')
