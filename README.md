@@ -7,7 +7,6 @@ This repository processes raw mmWave radar data to generate point cloud data. Th
 - **Raw Data Parsing**: Converts raw mmWave radar data into a usable format.  
 - **Point Cloud Generation**: Produces 3D point cloud data for visualization and analysis.  
 - **Cross-Platform Support**: Works on Windows, macOS, and Linux.  
-- **Python Compatibility**: Supports Python 3.8, 3.9, and 3.10.  
 
 ## Prerequisites
 
@@ -28,32 +27,23 @@ Ensure you have the following installed:
 2. Create the environment:
    
    ```bash
-   conda env create -f environments.yaml
+   conda env create -f requirements.yaml
    conda activate <your_environment_name>
    ```
 
 ## Usage
 
-1. Prepare your raw radar data in the required format.  
-2. Run the script to process the data:  
+1. Run the script to process the data:  
 
    ```bash
-   python process_mmwave_data.py --input <path_to_raw_data> --output <path_to_point_cloud>
+   python dislab_mmwavePCD.py
    ```
 
-3. Visualize the point cloud (optional):  
+2. Visualize the point cloud (optional):  
 
    ```bash
-   python visualize_point_cloud.py --input <path_to_point_cloud>
+   python dislab_mmwavePCD.py --display
    ```
-
-## Workflow
-
-This project uses GitHub Actions to ensure code quality.
-
-- Each push triggers a Pylint check for Python files.  
-- Compatibility is tested on Ubuntu, macOS, and Windows using Python 3.8, 3.9, and 3.10.  
-
 
 ## License
 

@@ -194,4 +194,3 @@ dependencies:
       - werkzeug==3.0.6
       - wget==3.2
       - xarray==2024.7.0
-prefix: /opt/homebrew/Caskroom/miniconda/base/envs/mmEyes
