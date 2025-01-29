@@ -2,7 +2,7 @@
     Author        : Shelta Zhao(赵小棠)
     Email         : xiaotang_zhao@outlook.com
     Copyright (C) : NJU DisLab, 2025.
-    Description   : Traditon pipline to generate Point Cloud Data (PCD) from raw radar data.
+    Description   : Traditon pipeline to generate Point Cloud Data (PCD) from raw radar data.
 """
 
 import os
@@ -48,8 +48,8 @@ def adc_to_pcd(adc_list, device, save=False, display=False):
         data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}/{adc_data['index']}")
         config_path = os.path.join("data/radar_config", adc_data["config"])
         
-        radar_params = get_radar_params(config_path, adc_data['radar'], load=True)
-        regular_data, _ = get_regular_data(data_path, radar_params['readObj'], 'all', load=True, timestamp=True)
+        radar_params = get_radar_params(config_path, adc_data['radar'])
+        regular_data, _ = get_regular_data(data_path, radar_params['readObj'], 'all', timestamp=True)
 
         # Generate all module instances
         fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
@@ -60,7 +60,7 @@ def adc_to_pcd(adc_list, device, save=False, display=False):
         fft_output = fft_processor.run(regular_data)
     
         # Perform CFAR-CASO detection
-        for frameIdx in tqdm(range(2), desc="Processing frames"): #(fft_output.shape[0]):
+        for frameIdx in tqdm(range(fft_output.shape[0]), desc="Processing frames"):
             detection_results = cfar_processor.run(fft_output[frameIdx,:radar_params['detectObj']['rangeFFTSize'] // 2,:,:,:], frameIdx)
 
             # Perform DOA Estimation

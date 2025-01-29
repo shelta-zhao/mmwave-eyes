@@ -6,6 +6,7 @@
 """
 
 import torch
+import argparse
 from itertools import count
 
 
@@ -85,3 +86,24 @@ def peak_detect(input, gamma, sidelobeLevel_dB):
         peakLoc = (maxData[:, 0] % N).clone().detach().to(torch.long)
 
     return peakVal, peakLoc
+
+
+def parse_arguments():
+    """
+    Parse command-line arguments for the radar data conversion script.
+
+    Returns:
+        argparse.Namespace: The parsed command-line arguments.
+        - yaml_path: Path to the radar data file.
+        - pipeline: Processing pipeline to use.
+        - save: Whether to save the results to a file.
+        - display: Whether to display the results.
+    """
+
+    parser = argparse.ArgumentParser(description='Convert radar data to PCD format.')
+    parser.add_argument('--yaml_path', type=str, default="adc_list", help='Path to the radar data file.')
+    parser.add_argument('--pipeline', type=int, default=1, help='Processing pipeline to use.')
+    parser.add_argument('--save', action='store_true', help='Whether to save the results to a file.')
+    parser.add_argument('--display', action='store_true', help='Whether to display the results.')
+
+    return parser.parse_args()
