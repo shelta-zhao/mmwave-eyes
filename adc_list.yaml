@@ -1,4 +1,4 @@
-- prefix: "data_example"
+- prefix: "dream_pcd_data"
   index: ""
-  config: "config_example"
-  radar: "IWR6843ISK"
+  config: "1843_azi"
+  radar: "AWR1843Boost"

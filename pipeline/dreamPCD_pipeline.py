@@ -47,17 +47,10 @@ def dream_pcd_pipeline(adc_list, device, save=False, display=False):
         # Generate regular data & radar params
         data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}/{adc_data['index']}")
         config_path = os.path.join("data/radar_config", adc_data["config"])
-        
-        radar_params = get_radar_params(config_path, adc_data['radar'])
-        regular_data, _ = get_regular_data(data_path, radar_params['readObj'], 'all', timestamp=True)
 
-        # Update the radar parameters
-        radar_params['detectObj']['refWinSize'] = [8,4]
-        radar_params['detectObj']['guardWinSize'] = [8,0]
-        radar_params['detectObj']['K0'] = [5,3]
-        radar_params['detectObj']['discardCellLeft'] = 10
-        radar_params['detectObj']['discardCellRight'] = 20
-
+        radar_params = get_radar_params(config_path, adc_data['radar'], load=True)
+        regular_data = np.fromfile(os.path.join(data_path, 'frame_2.bin'), dtype = "complex128").reshape((1, 128, 128, 4, 3))
+    
         # Generate all module instances
         fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
         cfar_processor = CFARProcessor(radar_params['detectObj'], device)
@@ -65,13 +58,20 @@ def dream_pcd_pipeline(adc_list, device, save=False, display=False):
 
         # Perform Range & Doppler FFT
         fft_output = fft_processor.run(regular_data)
-        print(fft_output.shape)
-        # Perform CFAR Detection
-        cfar_output = cfar_processor.run(fft_output)
-        print(cfar_output.shape)
-        # Perform DOA Estimation
-        doa_output = doa_processor.run(cfar_output)
-        print(doa_output.shape)
-        # Display the results
+
+        # Perform CFAR-CASO detection
+        for frameIdx in tqdm(range(fft_output.shape[0]), desc="Processing frames"):
+            detection_results = cfar_processor.run(fft_output[frameIdx,:radar_params['detectObj']['rangeFFTSize'] // 2,:,:,:], frameIdx)
+
+            # Perform DOA Estimation
+            doa_results = doa_processor.run(detection_results)
+
+            # Merge the DOA results
+            if frameIdx == 0:
+                point_cloud_data = doa_results
+            else:
+                point_cloud_data = np.concatenate((point_cloud_data, doa_results), axis=0)
+        
+        # Display the PCD data if required
         if display:
-            PCD_display(doa_output, radar_params['DOAObj']['angles_DOA_azi'], radar_params['DOAObj']['angles_DOA_ele'])
+            PCD_display(point_cloud_data)
