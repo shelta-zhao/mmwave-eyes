@@ -13,6 +13,7 @@ import torch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from utility.tool_box import parse_arguments
 from pipeline.adc_to_pcd import adc_to_pcd
+from pipeline.dreamPCD_pipeline import dream_pcd_pipeline
 
 
 if __name__ == "__main__":
@@ -31,7 +32,9 @@ if __name__ == "__main__":
         # ====================================================================================
         # Add your own code here to process the PCD data
         # ====================================================================================
-        pass
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        dream_pcd_pipeline(args.yaml_path, device, save=args.save, display=args.display)
+
     else:
         
         print("Invalid pipeline option. Please choose 1 for the traditional pipeline.")

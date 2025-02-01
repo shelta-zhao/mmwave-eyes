@@ -2,43 +2,43 @@ readObj:
   iqSwap: 0
   numLane: 2
   chInterleave: 1
-  dataSizeOneFrame: 2088960
-  numAdcSamplePerChirp: 512
-  numChirpsPerFrame: 255
+  dataSizeOneFrame: 196608
+  numAdcSamplePerChirp: 128
+  numChirpsPerFrame: 24
   numTxForMIMO: 3
   numRxForMIMO: 4
 rangeFFTObj:
-  radarPlatform: IWR6843ISK
-  rangeFFTSize: 512
+  radarPlatform: AWR1843Boosting
+  rangeFFTSize: 128
   dcOffsetCompEnable: 1
   rangeWindowEnable: 1
   FFTOutScaleOn: 0
-  scaleFactorRange: 0.0078125
-  rangeResolution: 0.039275899192114445
-  maxRange: 10.054630193181298
+  scaleFactorRange: 0.03125
+  rangeResolution: 0.09375
+  maxRange: 6.0
 dopplerFFTObj:
   dopplerFFTSize: 128
   dopplerWindowEnable: 0
   FFTOutScaleOn: 0
   scaleFactorDoppler: 0.03125
-  velocityResolution: 0.022884368906116316
-  maximumVelocity: 2.91775703552983
+  velocityResolution: 1.165316453336068
+  maximumVelocity: 13.983797440032816
 detectObj:
   detectMethod: 1
   numAntenna: 12
   refWinSize:
-  - 5
-  - 3
+  - 8
+  - 4
   guardWinSize:
-  - 3
-  - 2
+  - 8
+  - 0
   K0:
   - 5
-  - 4
+  - 3
   maxEnable: 0
-  rangeBinSize: 0.039275899192114445
-  velocityBinSize: 0.015196651226717867
-  rangeFFTSize: 512
+  rangeBinSize: 0.09375
+  velocityBinSize: 0.10924841750025638
+  rangeFFTSize: 128
   dopplerFFTSize: 128
   powerThre: 0
   discardCellLeft: 0
@@ -73,8 +73,8 @@ DOAObj:
     - 0
   - - 7
     - 0
-  DOAFFTSize: 180
-  antenna_DesignFreq: 60000000004.4704
+  DOAFFTSize: 128
+  antenna_DesignFreq: 79000000000.0
   antPos:
   - 0
   - 1
@@ -89,7 +89,7 @@ DOAObj:
   - 10
   - 11
   antenna_azimuthonly: 0
-  antDis: 0.5174049166030632
+  antDis: 0.5117
   method: 1
   angles_DOA_azi:
   - -80
