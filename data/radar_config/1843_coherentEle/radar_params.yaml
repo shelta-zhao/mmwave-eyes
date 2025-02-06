@@ -14,6 +14,9 @@ rangeFFTObj:
   rangeWindowEnable: 1
   FFTOutScaleOn: 0
   scaleFactorRange: 0.03125
+  discardEnable: 1
+  discardCellLeft: 0.05
+  discardCellRight: 0.1
   rangeResolution: 0.09375
   maxRange: 6.0
 dopplerFFTObj:
