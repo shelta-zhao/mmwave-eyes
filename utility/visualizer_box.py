@@ -10,6 +10,36 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
+def fft_display(fft_output):
+    """
+    Plot the 3D Range-Doppler FFT Spectrum.
+
+    Parameters:
+    - fft_output: A tensor of shape (range_fft_size, doppler_fft_size).
+    """
+
+    # Get the magnitude of the FFT output
+    x, y = np.arange(fft_output.shape[0]), np.arange(fft_output.shape[1])
+    X, Y = np.meshgrid(x, y)
+
+    # Get the magnitude of the FFT output
+    Z = np.abs(fft_output.T)
+
+    # Create 3D plot
+    fig = plt.figure(figsize=(10, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Draw 3D spectrum
+    ax.plot_surface(X, Y, Z, cmap='viridis')
+    ax.set_xlabel("Range FFT Bins")
+    ax.set_ylabel("Doppler FFT Bins")
+    ax.set_zlabel("Magnitude")
+
+    # Set title and show
+    ax.set_title("3D Range-Doppler FFT Spectrum")
+    plt.show()
+
+
 def PCD_display(point_cloud_data):
     """
     Plot the point cloud data in a 3D scatter plot.

@@ -44,7 +44,7 @@ class FFTProcessor:
         """
 
         # Convert input to tensor
-        input = torch.tensor(input, dtype=torch.complex64).to(self.device)
+        input = torch.tensor(input, dtype=torch.complex128).to(self.device)
 
         # Perform Range FFT
         range_fft_output = self.range_fft(input)
@@ -70,17 +70,22 @@ class FFTProcessor:
         radar_type, fft_size = self.rangeFFTObj['radarPlatform'], self.rangeFFTObj['rangeFFTSize']
         dc_on, win_on = self.rangeFFTObj['dcOffsetCompEnable'], self.rangeFFTObj['rangeWindowEnable']
         scale_on, scale_factor = self.rangeFFTObj['FFTOutScaleOn'], self.rangeFFTObj['scaleFactorRange']
+        discard_on, discardCellLeft, discardCellRight = self.rangeFFTObj['discardEnable'], self.rangeFFTObj['discardCellLeft'], self.rangeFFTObj['discardCellRight']
 
         # Generate window coefficient
-        win_coeff = torch.hann_window(input.shape[1] + 2, periodic=True).to(self.device)[1:-1]
+        win_coeff = torch.hann_window(input.shape[1] + 2, periodic=False, dtype=torch.float64).to(self.device)[1:-1]
         # Apply DC offset compensation
         input = input - torch.mean(input, dim=1, keepdim=True) if dc_on else input
         # Apply range-domain windowing
-        input = input * win_coeff.view(-1, 1, 1, 1) if win_on else input
+        input = input * win_coeff[:, None, None, None] if win_on else input
         # Perform FFT for each TX/RX chain
         fft_output = torch.fft.fft(input, n=fft_size, dim=1)
         # Apply scale factor
         fft_output = fft_output * scale_factor if scale_on else fft_output
+        # Apply range-domain discard
+        if discard_on:
+            fft_output[:,0:int(fft_size * discardCellLeft),:,:,:] = 0
+            fft_output[:,-int(fft_size * discardCellRight):,:,:,:] = 0
         # Phase compensation for IWR6843ISK-ODS
         if radar_type == 'IWR6843ISK-ODS':
             fft_output[:, :, :, 1:3, :] *= -1
@@ -104,9 +109,9 @@ class FFTProcessor:
         scale_on, scale_factor = self.dopplerFFTObj['FFTOutScaleOn'], self.dopplerFFTObj['scaleFactorDoppler']
 
         # Generate window coefficient
-        win_coeff = torch.hann_window(input.shape[1] + 2, periodic=True).to(self.device)[1:-1]
+        win_coeff = torch.hann_window(input.shape[2] + 2, periodic=True, dtype=torch.float64).to(self.device)[1:-1]
         # Apply Doppler-domain windowing
-        input = input * win_coeff.view(-1, 1, 1, 1) if win_on else input
+        input = input * win_coeff[None, None, :, None, None] if win_on else input
         # Perform FFT for each TX/RX chain
         fft_output = torch.fft.fftshift(torch.fft.fft(input, n=fft_size, dim=2), dim=2)
         # Apply scale factor
