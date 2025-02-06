@@ -172,6 +172,9 @@ def generate_params(config_path, radar_type):
         'rangeWindowEnable': 1,
         'FFTOutScaleOn': 0,
         'scaleFactorRange': scale_factor[int(np.log2(range_fft_size)) - 4],
+        'discardEnable': 1,
+        'discardCellLeft': 0.05,
+        'discardCellRight': 0.1,
         'rangeResolution': range_resolution,
         'maxRange': max_range
     }
