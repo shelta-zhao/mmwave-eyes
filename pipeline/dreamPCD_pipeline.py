@@ -49,7 +49,7 @@ def dream_pcd_pipeline(adc_list, device, save=False, display=False):
         config_path = os.path.join("data/radar_config", adc_data["config"])
 
         radar_params = get_radar_params(config_path, adc_data['radar'], load=True)
-        regular_data = np.fromfile(os.path.join(data_path, 'frame_3.bin'), dtype = "complex128").reshape((1, 128, 128, 4, 3))
+        regular_data = np.fromfile(os.path.join(data_path, 'frame_4.bin'), dtype = "complex128").reshape((1, 128, 128, 4, 3))
         
         # Generate all module instances
         fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)

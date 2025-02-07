@@ -1,4 +1,4 @@
 - prefix: "dream_pcd_data"
-  index: "02"
+  index: "03"
   config: "1843_azi"
   radar: "AWR1843Boost"
