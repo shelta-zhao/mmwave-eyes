@@ -44,8 +44,12 @@ detectObj:
   rangeFFTSize: 128
   dopplerFFTSize: 128
   powerThre: 0
-  discardCellLeft: 0
-  discardCellRight: 0
+  discardCellLeft: 
+  - 10
+  - 0
+  discardCellRight: 
+  - 20
+  - 0
   numRxAnt: 4
   TDM_MIMO_numTX: 3
   minDisApplyVmaxExtend: 10

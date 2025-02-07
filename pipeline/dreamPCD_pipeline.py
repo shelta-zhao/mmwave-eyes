@@ -20,57 +20,6 @@ from module.doa_process import DOAProcessor
 from utility.visualizer_box import PCD_display, fft_display
 
 
-def rangeFFT(input):
-    """
-    Performs range FFT on the input data using the specified options.
-
-    :param input: Input data array (numpy array)
-    :param opt: Options including range_fftsize
-    :return: Array with applied range FFT (numpy array)
-    """
-    fftsize = 128
-    rangeWindowCoeffVec = np.hanning(input.shape[0] + 2)[1:-1]
-    numLines = input.shape[1]
-    numAnt = input.shape[2]
-    out = np.zeros((fftsize, numLines, numAnt), dtype=complex)
-
-    for i_an in range(numAnt):
-        inputMat = input[:, :, i_an]
-        # pdb.set_trace()
-        # visData.plotHeatmap(np.abs(inputMat))
-        inputMat = np.subtract(inputMat, np.mean(inputMat, axis=0))
-        inputMat = inputMat * rangeWindowCoeffVec[:, None]
-        fftOutput = np.fft.fft(inputMat, fftsize, axis=0)
-        # pdb.set_trace()
-        out[:, :, i_an] = fftOutput
-        
-    return out
-
-
-def DopplerFFT(input):
-    """
-    Performs Doppler FFT on the input data using the specified options.
-
-    :param input: Input data array (numpy array)
-    :param opt: Options including doppler_fftsize
-    :return: Array with applied Doppler FFT (numpy array)
-    """
-    fftsize = 128
-    dopplerWindowCoeffVec = np.hanning(input.shape[1] + 2)[1:-1]
-    numLines = input.shape[0]
-    numAnt = input.shape[2]
-    out = np.zeros((numLines, fftsize, numAnt), dtype=complex)
-
-    for i_an in range(numAnt):
-        inputMat = np.squeeze(input[:, :, i_an])
-        inputMat = inputMat * dopplerWindowCoeffVec[None, :]
-        fftOutput = np.fft.fft(inputMat, fftsize, axis=1)
-        fftOutput = np.fft.fftshift(fftOutput, axes=1)
-        out[:, :, i_an] = fftOutput
-
-    return out
-
-
 def dream_pcd_pipeline(adc_list, device, save=False, display=False):
     """
     Generate Point Cloud Data (PCD) from raw radar data.
@@ -100,7 +49,8 @@ def dream_pcd_pipeline(adc_list, device, save=False, display=False):
         config_path = os.path.join("data/radar_config", adc_data["config"])
 
         radar_params = get_radar_params(config_path, adc_data['radar'], load=True)
-        regular_data = np.fromfile(os.path.join(data_path, 'frame_2.bin'), dtype = "complex128").reshape((1, 128, 128, 4, 3))
+        regular_data = np.fromfile(os.path.join(data_path, 'frame_3.bin'), dtype = "complex128").reshape((1, 128, 128, 4, 3))
+        
         # Generate all module instances
         fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
         cfar_processor = CFARProcessor(radar_params['detectObj'], device)
@@ -108,37 +58,13 @@ def dream_pcd_pipeline(adc_list, device, save=False, display=False):
 
         # Perform Range & Doppler FFT
         fft_output = fft_processor.run(regular_data)
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
+        # fft_display(fft_output[0, :, :, 0, 0])
 
-        # # # 假设 fft_out 是 [range_fft_size, doppler_fft_size] 大小
-        radar_adc_data = regular_data[0,:,:,:,:].squeeze()
-        rangeFFTOut = np.zeros((128, 128, 4, 3),dtype=complex)
-        DopplerFFTOut = np.zeros((128, 128, 4, 3),dtype=complex)
-        for i_tx in range(3):
-            rangeFFTOut[:,:,:,i_tx] = rangeFFT(radar_adc_data[:,:,:,i_tx])
-            rangeFFTOut[0:int(128*0.05),:,:,:] = 0
-            rangeFFTOut[-int(128*0.1):,:,:,:] = 0
-            DopplerFFTOut[:,:,:,i_tx] = DopplerFFT(rangeFFTOut[:,:,:,i_tx])
-        
-        import torch
-        fft_out = torch.tensor(DopplerFFTOut[:,:,0,0])       
-        fft_out = fft_output[0, :, :, 0, 0]
-        range_fft_size, doppler_fft_size = fft_out.shape
-        print(fft_out.shape)
-
-        value, indices = torch.topk(abs(fft_out).view(-1), 5)
-        indices_2d = torch.stack((indices // 128, indices % 128), dim=1)
-        print(indices_2d    )
-        print(value)
-        fft_display(fft_out)
-        aaaa
         # Perform CFAR-CASO detection
         for frameIdx in range(1):#tqdm(range(fft_output.shape[0]), desc="Processing frames"):
-            # detection_results = cfar_processor.run(fft_output[:,:,:,:], frameIdx)
+
             detection_results = cfar_processor.run(fft_output[frameIdx,:,:,:,:], frameIdx)
-            print(detection_results.shape)
-            aaaa
+
             # Perform DOA Estimation
             doa_results = doa_processor.run(detection_results)
 

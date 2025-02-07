@@ -109,7 +109,7 @@ class FFTProcessor:
         scale_on, scale_factor = self.dopplerFFTObj['FFTOutScaleOn'], self.dopplerFFTObj['scaleFactorDoppler']
 
         # Generate window coefficient
-        win_coeff = torch.hann_window(input.shape[2] + 2, periodic=True, dtype=torch.float64).to(self.device)[1:-1]
+        win_coeff = torch.hann_window(input.shape[2] + 2, periodic=False, dtype=torch.float64).to(self.device)[1:-1]
         # Apply Doppler-domain windowing
         input = input * win_coeff[None, None, :, None, None] if win_on else input
         # Perform FFT for each TX/RX chain

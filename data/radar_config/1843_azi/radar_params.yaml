@@ -14,11 +14,14 @@ rangeFFTObj:
   rangeWindowEnable: 1
   FFTOutScaleOn: 0
   scaleFactorRange: 0.03125
+  discardEnable: 1
+  discardCellLeft: 0.05
+  discardCellRight: 0.1
   rangeResolution: 0.12499218702877946
   maxRange: 7.999499969841885
 dopplerFFTObj:
   dopplerFFTSize: 128
-  dopplerWindowEnable: 0
+  dopplerWindowEnable: 1
   FFTOutScaleOn: 0
   scaleFactorDoppler: 0.03125
   velocityResolution: 0.03867281888183667
@@ -41,8 +44,12 @@ detectObj:
   rangeFFTSize: 128
   dopplerFFTSize: 128
   powerThre: 0
-  discardCellLeft: 0
-  discardCellRight: 0
+  discardCellLeft: 
+  - 10
+  - 0
+  discardCellRight: 
+  - 20
+  - 0
   numRxAnt: 4
   TDM_MIMO_numTX: 3
   minDisApplyVmaxExtend: 10
