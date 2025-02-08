@@ -56,7 +56,7 @@ class DOAProcessor:
             load (bool): Whether to load the results from a file.
 
         Returns:
-            point cloud data (list): The DOA estimation results.
+            point cloud data (np.ndarray): The DOA estimation results.
             1. frameIdx: Frame index
             2. objectIdx: Object index
             3. x: X coordinate
