@@ -6,6 +6,7 @@
 """
 
 import os
+import re
 import sys
 import yaml
 import numpy as np
@@ -19,7 +20,7 @@ from handler.adc_load import get_regular_data
 from module.fft_process import FFTProcessor
 from module.cfar_process import CFARProcessor
 from module.doa_process import DOAProcessor
-from utility.visualizer_box import PCD_display, fft_display
+from utility.visualizer_box import PCD_display
 
 
 class DreamPCDPipeline:
@@ -67,7 +68,9 @@ class DreamPCDPipeline:
             synchronized_data = self.data_sync(data_path)
 
             # Perform the processing pipeline
-            for idx in range(len(synchronized_data['radar_azi']['paths'])):
+            synchronized_data['radar_azi']['paths'] = synchronized_data['radar_azi']['paths'][:10]
+            global_pcd_all = []
+            for idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames"):
                 
                 # Read the data paths
                 radar_path_azi = synchronized_data['radar_azi']['paths'][idx] if synchronized_data['radar_azi']['paths'] else None
@@ -79,29 +82,30 @@ class DreamPCDPipeline:
                     break
 
                 # Load the data from the given paths
-                regular_data_azi = np.fromfile(radar_path_azi, dtype = "complex128").reshape((1, 128, 128, 4, 3))
-        
+                regular_data_azi = np.fromfile(radar_path_azi.replace("PCD_SamePaddingUDPERROR", "ADC", 1), dtype = "complex128")
+                regular_data_azi = regular_data_azi.reshape((1, radar_params['readObj']['numAdcSamplePerChirp'], -1, radar_params['readObj']['numRxForMIMO'], radar_params['readObj']['numTxForMIMO']))
+
                 # Perform Range & Doppler FFT
                 fft_output = fft_processor.run(regular_data_azi)
-                # fft_display(fft_output[0, :, :, 0, 0])
 
                 # Perform CFAR-CASO detection
-                for frameIdx in range(1):#tqdm(range(fft_output.shape[0]), desc="Processing frames"):
-
-                    detection_results = cfar_processor.run(fft_output[frameIdx,:,:,:,:], frameIdx)
-
-                    # Perform DOA Estimation
-                    doa_results = doa_processor.run(detection_results)
-
-                    # Merge the DOA results
-                    if frameIdx == 0:
-                        point_cloud_data = doa_results
-                    else:
-                        point_cloud_data = np.concatenate((point_cloud_data, doa_results), axis=0)
+                detection_results = cfar_processor.run(fft_output[0,:,:,:,:], idx)
                 
-                # Display the PCD data if required
-                if display:
-                    PCD_display(point_cloud_data)
+                # Perform DOA Estimation
+                local_pcd = doa_processor.run(detection_results)
+
+                # Perform Coordinate Transformation
+                global_pcd = self.trans_coordinate(local_pcd, synchronized_data['lidar']['positions'][idx], synchronized_data['lidar']['angles'][idx])   
+                   
+                # Merge the PCD results
+                global_pcd_all.append(global_pcd)
+
+            # Display the PCD data if required
+            if display:
+                PCD_display(np.vstack(global_pcd_all))
+
+            # Return the generated Point Cloud Data
+            return np.vstack(global_pcd_all)
 
     def data_sync(self, data_path):
         """
@@ -273,7 +277,10 @@ class DreamPCDPipeline:
 
         if not os.path.exists(path):
             return []
-        return sorted([os.path.join(path, f) for f in os.listdir(path) if any(f.endswith(extension) for extension in self.ADC_EXTENSIONS)])
+        data_paths = [os.path.join(path, f) for f in os.listdir(path) if any(f.endswith(extension) for extension in self.ADC_EXTENSIONS)]
+        data_paths.sort(key=lambda x: int(re.findall(r"\d+", x)[-1]))
+
+        return data_paths
 
     def del_miss_frame(self, path, radar_adc, radar_timestamps):
         """
@@ -303,3 +310,46 @@ class DreamPCDPipeline:
             return radar_adc, radar_timestamps
         except Exception as e:
             print(f"Error: Failed to delete missing frames: {e}")
+
+    def trans_coordinate(self, points, position, quaternion, trans_flag=True):
+        """
+        Transforms the point cloud from its local coordinate system to the global coordinate system.
+
+        Parameters:
+            points (np.ndarray): Input point cloud, the index of XYZ is 2:5.
+            position (list): Sensor position in the global coordinate system [x, y, z].
+            quaternion (list): Quaternion representing the sensor's orientation (w, x, y, z).
+            trans_flag (bool): Whether to apply special coordinate transformation.
+
+        Returns:
+            np.ndarray: Transformed point cloud.
+        """
+
+        if points.shape[0] == 0:
+            return points
+
+        # Convert quaternion to rotation matrix
+        rotation = Rotation.from_quat(quaternion)
+
+        # Extract only (x, y, z) from points
+        points_xyz = points[:, 2:5].copy()
+        features = np.hstack((points[:, :2], points[:, 5:]))
+
+        if trans_flag:
+            # LiDAR → Camera coordinate system transformation
+            points_xyz[:, [1, 2]] = points_xyz[:, [2, 1]]
+            points_xyz[:, 2] *= -1
+            position = [position[0], position[2], -position[1]]
+
+        # Apply rotation and translation
+        transformed_xyz = rotation.apply(points_xyz) + np.array(position)
+
+        if trans_flag:
+            # Convert back to LiDAR coordinate system
+            transformed_xyz[:, [1, 2]] = transformed_xyz[:, [2, 1]]
+            transformed_xyz[:, 1] *= -1
+
+        # Construct the transformed point cloud
+        transformed_points = np.hstack((features[:, :2], transformed_xyz, features[:, 2:]))
+
+        return transformed_points
