@@ -58,38 +58,50 @@ class DreamPCDPipeline:
             config_path = os.path.join("data/radar_config", adc_data["config"])
             radar_params = get_radar_params(config_path, adc_data['radar'], load=True)
 
-            # Perform data synchronization
-            synchronized_data = self.data_sync(data_path)
-
-            # Load the regular data
-            regular_data = np.fromfile(os.path.join(data_path, 'frame_4.bin'), dtype = "complex128").reshape((1, 128, 128, 4, 3))
-            
             # Generate all module instances
             fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
             cfar_processor = CFARProcessor(radar_params['detectObj'], device)
             doa_processor = DOAProcessor(radar_params['DOAObj'], device)
 
-            # Perform Range & Doppler FFT
-            fft_output = fft_processor.run(regular_data)
-            # fft_display(fft_output[0, :, :, 0, 0])
+            # Perform data synchronization
+            synchronized_data = self.data_sync(data_path)
 
-            # Perform CFAR-CASO detection
-            for frameIdx in range(1):#tqdm(range(fft_output.shape[0]), desc="Processing frames"):
+            # Perform the processing pipeline
+            for idx in range(len(synchronized_data['radar_azi']['paths'])):
+                
+                # Read the data paths
+                radar_path_azi = synchronized_data['radar_azi']['paths'][idx] if synchronized_data['radar_azi']['paths'] else None
+                radar_path_ele = synchronized_data['radar_ele']['paths'][idx] if synchronized_data['radar_ele']['paths'] else None
+                lidar_path = synchronized_data['lidar']['paths'][idx] if synchronized_data['lidar']['paths'] else None
+                camera_path = synchronized_data['camera']['paths'][idx] if synchronized_data['camera']['paths'] else None
+                if radar_path_azi is None or lidar_path is None:
+                    print(f"Warning: Missing data in {adc_data}.")
+                    break
 
-                detection_results = cfar_processor.run(fft_output[frameIdx,:,:,:,:], frameIdx)
+                # Load the data from the given paths
+                regular_data_azi = np.fromfile(radar_path_azi, dtype = "complex128").reshape((1, 128, 128, 4, 3))
+        
+                # Perform Range & Doppler FFT
+                fft_output = fft_processor.run(regular_data_azi)
+                # fft_display(fft_output[0, :, :, 0, 0])
 
-                # Perform DOA Estimation
-                doa_results = doa_processor.run(detection_results)
+                # Perform CFAR-CASO detection
+                for frameIdx in range(1):#tqdm(range(fft_output.shape[0]), desc="Processing frames"):
 
-                # Merge the DOA results
-                if frameIdx == 0:
-                    point_cloud_data = doa_results
-                else:
-                    point_cloud_data = np.concatenate((point_cloud_data, doa_results), axis=0)
-            
-            # Display the PCD data if required
-            if display:
-                PCD_display(point_cloud_data)
+                    detection_results = cfar_processor.run(fft_output[frameIdx,:,:,:,:], frameIdx)
+
+                    # Perform DOA Estimation
+                    doa_results = doa_processor.run(detection_results)
+
+                    # Merge the DOA results
+                    if frameIdx == 0:
+                        point_cloud_data = doa_results
+                    else:
+                        point_cloud_data = np.concatenate((point_cloud_data, doa_results), axis=0)
+                
+                # Display the PCD data if required
+                if display:
+                    PCD_display(point_cloud_data)
 
     def data_sync(self, data_path):
         """
@@ -130,27 +142,18 @@ class DreamPCDPipeline:
 
         # Read the pose data from the given paths
         positions, angles, _ = self.read_pose(camera_path)
-
+ 
         # Read the data paths for all sensors
-        radar_adc_azi= self.read_data_paths(os.path.join(radar_path_azi, 'PCD_SamePaddingUDPERROR'))
-        radar_adc_ele = self.read_data_paths(os.path.join(radar_path_ele, 'ADC'))
-        lidar_adc = self.read_data_paths(lidar_path)
-        camera_adc = self.read_data_paths(camera_path)
+        radar_adc_azi= self.read_data_path(os.path.join(radar_path_azi, 'PCD_SamePaddingUDPERROR'))
+        radar_adc_ele = self.read_data_path(os.path.join(radar_path_ele, 'ADC'))
+        lidar_adc = self.read_data_path(lidar_path)
+        camera_adc = self.read_data_path(camera_path)
 
         # Delete the missing frames according to the del_frame.txt
-        try:
-            with open(os.path.join(radar_path_azi, "del_frame.txt"), "r") as file:
-                del_frame_index = set(int(line.strip()) for line in file.readlines())
+        radar_adc_azi, radar_timestamps_azi = self.del_miss_frame(radar_path_azi, radar_adc_azi, radar_timestamps_azi)
+        if radar_adc_ele:
+            radar_adc_ele, radar_timestamps_ele = self.del_miss_frame(radar_path_ele, radar_adc_ele, radar_timestamps_ele)
 
-            radar_adc_azi = [path for i, path in enumerate(radar_adc_azi) if i not in del_frame_index]
-            radar_timestamps_azi = [timestamp for i, timestamp in enumerate(radar_timestamps_azi) if i not in del_frame_index]            
-            print(f"Deleted missing frames : {del_frame_index}")
-
-            if len(radar_adc_azi) != len(radar_timestamps_azi):
-                raise Exception("Different number of paths and timestamps after deleting missing frames.")
-        except Exception as e:
-            print(f"Error: Failed to delete missing frames: {e}")
-        
         # Get the start & end time of the data
         start_time = max(map(min, [radar_timestamps_azi, radar_timestamps_ele, lidar_timestamps, camera_timestamps]))
         end_time = min(map(max, [radar_timestamps_azi, radar_timestamps_ele, lidar_timestamps, camera_timestamps]))
@@ -183,7 +186,7 @@ class DreamPCDPipeline:
                 result['camera']['angles'].append(angles[camera_radar_idx])
 
         # Perform the data synchronization vertically
-        if radar_timestamps_ele:
+        if radar_adc_ele:
            
             # Convert to numpy array & filter out the repeated timestamps
             camera_timestamps = np.array(camera_timestamps)
@@ -257,7 +260,7 @@ class DreamPCDPipeline:
         # Return the pose data
         return positions, angles, velocities
     
-    def read_data_paths(self, path):
+    def read_data_path(self, path):
         """
         Read the adc data paths from the given path.
 
@@ -271,3 +274,32 @@ class DreamPCDPipeline:
         if not os.path.exists(path):
             return []
         return sorted([os.path.join(path, f) for f in os.listdir(path) if any(f.endswith(extension) for extension in self.ADC_EXTENSIONS)])
+
+    def del_miss_frame(self, path, radar_adc, radar_timestamps):
+        """
+        Delete the missing radar frames from the given path.
+
+        Parameters:
+            path (str): The path to the data.
+            radar_adc (list): The list of radar adc data.
+            radar_timestamps (list): The list of radar timestamps.
+
+        Returns:
+            radar_adc (list): The list of radar adc data after deleting the missing frames.
+            radar_timestamps (list): The list of radar timestamps after deleting the missing frames.
+        """
+
+        try:
+            with open(os.path.join(path, "del_frame.txt"), "r") as file:
+                del_frame_index = set(int(line.strip()) for line in file.readlines())
+
+            radar_adc = [path for i, path in enumerate(radar_adc) if i not in del_frame_index]
+            radar_timestamps = [timestamp for i, timestamp in enumerate(radar_timestamps) if i not in del_frame_index]            
+            print(f"Deleted missing frames : {del_frame_index}")
+
+            if len(radar_adc) != len(radar_timestamps):
+                raise Exception("Different number of paths and timestamps after deleting missing frames.")
+            
+            return radar_adc, radar_timestamps
+        except Exception as e:
+            print(f"Error: Failed to delete missing frames: {e}")
