@@ -1,4 +1,5 @@
 #  File Ignore Addition
+/data/
 *.jpg
 *.png
 *.mat

@@ -1,4 +1,4 @@
-- prefix: "dream_pcd_data"
-  index: "03"
+- prefix: "2023_06_30_20_13_01"
+  index: ""
   config: "1843_azi"
   radar: "AWR1843Boost"
