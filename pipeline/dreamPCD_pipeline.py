@@ -102,7 +102,7 @@ class DreamPCDPipeline:
 
             # Display the PCD data if required
             if display:
-                PCD_display(np.vstack(global_pcd_all))
+                PCD_display(np.vstack(global_pcd))
 
             # Return the generated Point Cloud Data
             return np.vstack(global_pcd_all)
