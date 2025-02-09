@@ -20,7 +20,7 @@ from handler.adc_load import get_regular_data
 from module.fft_process import FFTProcessor
 from module.cfar_process import CFARProcessor
 from module.doa_process import DOAProcessor
-from utility.visualizer_box import PCD_display
+from utility.visualizer_box import PCD_display, detect_display
 
 
 class DreamPCDPipeline:
@@ -89,10 +89,12 @@ class DreamPCDPipeline:
                 fft_output = fft_processor.run(regular_data_azi)
 
                 # Perform CFAR-CASO detection
-                detection_results = cfar_processor.run(fft_output[0,:,:,:,:], idx)
-                
+                detection_results, sig_integrate = cfar_processor.run(fft_output[0,:,:,:,:], idx)
+                detect_display(detection_results, sig_integrate)
+                aaa
                 # Perform DOA Estimation
-                local_pcd = doa_processor.run(detection_results)
+                import torch
+                local_pcd = doa_processor.run(detection_results, torch.sum(torch.abs(input)**2, dim=2) + 1)
 
                 # Perform Coordinate Transformation
                 global_pcd = self.trans_coordinate(local_pcd, synchronized_data['lidar']['positions'][idx], synchronized_data['lidar']['angles'][idx])   
