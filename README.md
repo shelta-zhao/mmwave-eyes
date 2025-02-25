@@ -20,8 +20,8 @@ Ensure you have the following installed:
 1. Clone the repository:
 
    ```bash
-   git clone git@github.com:shelta-zhao/DisLab_mmwavePCD.git
-   cd DisLab_mmwavePCD
+   git clone git@github.com:shelta-zhao/dislab-mmPcd.git
+   cd dislab-mmPcd
    ```
 
 2. Create the environment:
@@ -36,13 +36,13 @@ Ensure you have the following installed:
 1. Run the script to process the data:  
 
    ```bash
-   python dislab_mmwavePCD.py
+   python dislab-mmPcd.py
    ```
 
 2. Visualize the point cloud (optional):  
 
    ```bash
-   python dislab_mmwavePCD.py --display
+   python dislab-mmPcd.py --display
    ```
 
 ## License
