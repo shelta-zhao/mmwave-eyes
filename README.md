@@ -36,13 +36,13 @@ Ensure you have the following installed:
 1. Run the script to process the data:  
 
    ```bash
-   python dislab-mmPcd.py
+   python dislab_mmPcd.py
    ```
 
 2. Visualize the point cloud (optional):  
 
    ```bash
-   python dislab-mmPcd.py --display
+   python dislab_mmPcd.py --display
    ```
 
 ## License
