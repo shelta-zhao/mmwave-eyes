@@ -42,7 +42,7 @@ class FFTProcessor:
         """
 
         # Convert input to tensor
-        input = torch.tensor(input, dtype=torch.complex128).to(self.device)
+        input = torch.tensor(input, dtype=torch.complex64).to(self.device)
 
         # Perform Range FFT
         range_fft_output = self.range_fft(input)
