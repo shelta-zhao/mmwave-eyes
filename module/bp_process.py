@@ -10,6 +10,7 @@ import sys
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.spatial.transform import Rotation as R
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
@@ -35,7 +36,10 @@ class BPProcessor:
             "rangebinSize":0.09375,
             "frame_rate": 200,
             "TX_position":[[0, 0, 0],[-1, 0, 2],[0, 0, 4]], 
-            "RX_position":[[0, 0, 7],[0, 0, 8],[0, 0, 9],[0, 0, 10]]
+            "RX_position":[[0, 0, 7],[0, 0, 8],[0, 0, 9],[0, 0, 10]],
+            "FOV_azi": [-15, 15],
+            "FOV_ele": [-45, 45],
+            "DOAFFTSize": 128
         }
         self.device = device
 
@@ -101,22 +105,27 @@ class BPProcessor:
         for idx in range(datas.shape[0]):
             
             # Extract the position and angle for current frame
-            pos, ang = positions[idx], angles[idx]
-            distances_TXs, distances_RXs = self.cal_distance(grid, pos)
+            position, angle = positions[idx], angles[idx]
+            distances_TXs, distances_RXs = self.cal_distance(grid, position)
 
             # Loop over all the mimo data in the current frame
             for rx_idx in range(datas.shape[2]):
                 for tx_idx in range(datas.shape[3]):
                     
                     distances = (distances_TXs[tx_idx] + distances_RXs[rx_idx]) / 2
-                    print(distances.shape)
-                    self.distance_display(distances)
-                    aaaa
-                    # 这里分别对应的是索引的上界、下界和小数部分
+                    
+                    # 这里分别对应的是索引的上界、下界和小数部分，上面的distance是local的
                     range_idxs_down = (distances / self.BPObj['rangebinSize']).to(torch.uint8)
                     range_idxs_up = (distances / self.BPObj['rangebinSize']).to(torch.uint8) + 1
                     range_idxs_small = (distances / self.BPObj['rangebinSize']) - (distances / self.BPObj['rangebinSize']).to(torch.uint8)
-                    aaaa
+
+                    # Perform the FOV Mask
+                    if fov_mask:
+                        FOV_valid_index = self.fov_mask(grid, position, angle, range_idxs_up)
+                        print(FOV_valid_index.shape)
+                        self.distance_display(FOV_valid_index)
+                        aaaa
+                        pass
 
             pass
 
@@ -189,13 +198,13 @@ class BPProcessor:
         # Return the resampled data
         return datas[sample_indices], positions[sample_indices], angles[sample_indices], timestamps[sample_indices]
 
-    def cal_distance(self, grid, pos):
+    def cal_distance(self, grid, position):
         """
         Calculate the distance between the radar and the target grid.
 
         Parameters:
             grid (torch.Tensor): The heatmap grid.
-            pos (torch.Tensor): The position of the radar.
+            position (torch.Tensor): The position of the radar.
 
         Returns:
             distances_TXs (list): The distances between the radar tx and the target grid.
@@ -207,7 +216,7 @@ class BPProcessor:
         rx_positions = torch.tensor(self.BPObj["RX_position"], device=self.device) * self.BPObj["antDis"]
 
         # Initialize the position of the radar tx and rx
-        chirp_position_TX3 = pos + torch.tensor([-0.094, -0.02, 0.032]).to(self.device)
+        chirp_position_TX3 = position + torch.tensor([-0.094, -0.02, 0.032]).to(self.device)
         chirp_tx_positions = list(chirp_position_TX3 + tx_positions[i] for i in [2, 1, 0])
         chirp_rX_positions = list(chirp_position_TX3 + rx_positions[i] for i in [3, 2, 1, 0])
 
@@ -254,7 +263,7 @@ class BPProcessor:
 
         plt.show()
 
-    def fov_mask(self):
+    def fov_mask(self, grid, position, angle, range_index):
         """
         Perform Field of View (FOV) Mask on the input data.
 
@@ -264,7 +273,51 @@ class BPProcessor:
         Returns:
             fov_output (np.ndarray): The output data after Field of View (FOV) Mask.
         """
-        pass
+
+        xx, yy, zz = grid[:, :, :, 0], grid[:, :, :, 1], grid[:, :, :, 2]
+        angle_coverted = self.convert_quaternion(angle.cpu().numpy())
+        rotation_matrix = torch.tensor(R.from_quat(angle_coverted).as_matrix(), device=self.device, dtype=torch.float32)
+
+        voxels = torch.stack([xx.flatten(), yy.flatten(), zz.flatten()])
+        range_idxs_vec = range_index.flatten()
+        voxels_transformed = rotation_matrix.T.matmul(voxels - position.reshape(3, 1))
+
+        r = torch.norm(voxels_transformed, dim=0)
+        angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 / np.pi
+        angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / np.pi
+        # angle_azi = angle_azi.reshape(grid.shape[:3])
+        # self.distance_display(angle_azi)
+        # aaaa
+        FOV_valid_index = ((angle_azi >= -1 * self.BPObj['FOV_azi'][0]) & (angle_azi <= self.BPObj['FOV_azi'][1]) & (angle_ele >= -1 * self.BPObj['FOV_ele'][0]) & (angle_ele <= self.BPObj['FOV_ele'][1]) & (range_idxs_vec < self.BPObj['DOAFFTSize']))
+        
+        return FOV_valid_index.reshape(grid.shape[:3])
+        return FOV_valid_index
+
+        
+
+    def convert_quaternion(self,q1):
+        """
+        Converts a quaternion representing a rotation in the x-y-z coordinate system to a quaternion
+        representing the same rotation in the x-z-(-y) coordinate system.
+
+        Args:
+        q1: (x, y, z, w) quaternion representing a rotation in the x-y-z coordinate system.
+
+        Returns:
+        q2: (x, y, z, w) quaternion representing the same rotation in the x-z-(-y) coordinate system.
+        """
+
+        # Define a rotation that swaps the y and z axes and inverts the y axis
+        swap_yz = R.from_euler('yxz', [0, 90, 0], degrees=True)
+
+        # Convert q1 to a rotation object
+        r1 = R.from_quat(q1)
+
+        # Apply the coordinate system transformation and convert back to a quaternion
+        r2 = swap_yz * r1 * swap_yz.inv()
+        q2 = r2.as_quat()
+
+        return q2
 
     def peak_detect(self):
         """
