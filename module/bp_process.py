@@ -9,6 +9,7 @@ import os
 import sys
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
@@ -92,7 +93,6 @@ class BPProcessor:
 
         # Create initial radar heatmap
         grid = self.init_heatmap()
-        
         img = torch.zeros(grid.shape[:-1], dtype=torch.cfloat, device=self.device)
         cnt = torch.ones(grid.shape[:-1], dtype=torch.cfloat, device=self.device)
         img_vec, cnt_vec = img.view(-1), cnt.view(-1)
@@ -103,6 +103,20 @@ class BPProcessor:
             # Extract the position and angle for current frame
             pos, ang = positions[idx], angles[idx]
             distances_TXs, distances_RXs = self.cal_distance(grid, pos)
+
+            # Loop over all the mimo data in the current frame
+            for rx_idx in range(datas.shape[2]):
+                for tx_idx in range(datas.shape[3]):
+                    
+                    distances = (distances_TXs[tx_idx] + distances_RXs[rx_idx]) / 2
+                    print(distances.shape)
+                    self.distance_display(distances)
+                    aaaa
+                    # 这里分别对应的是索引的上界、下界和小数部分
+                    range_idxs_down = (distances / self.BPObj['rangebinSize']).to(torch.uint8)
+                    range_idxs_up = (distances / self.BPObj['rangebinSize']).to(torch.uint8) + 1
+                    range_idxs_small = (distances / self.BPObj['rangebinSize']) - (distances / self.BPObj['rangebinSize']).to(torch.uint8)
+                    aaaa
 
             pass
 
@@ -210,6 +224,35 @@ class BPProcessor:
 
         # Return the distance
         return distances_TXs, distances_RXs
+
+    def distance_display(self, distances):
+        """
+        Display the distance between the radar and the target grid.
+
+        Parameters:
+            distances (torch.Tensor): The distances between the radar and the target grid.
+        """
+
+        # Extract the distance
+        distances = distances.squeeze().cpu().numpy()
+
+        # Create the mesh grid
+        x = np.arange(0, distances.shape[0])
+        y = np.arange(0, distances.shape[1])
+        X, Y = np.meshgrid(y, x)
+
+        # Display the 3D mesh of distances
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(X, Y, distances, cmap='viridis')
+
+        # Set the title and labels
+        ax.set_title("3D Mesh of Distances")
+        ax.set_xlabel("X axis")
+        ax.set_ylabel("Y axis")
+        ax.set_zlabel("Distances")
+
+        plt.show()
 
     def fov_mask(self):
         """
