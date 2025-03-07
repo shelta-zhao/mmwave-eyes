@@ -9,14 +9,12 @@ import os
 import sys
 import torch
 import numpy as np
+from functools import reduce
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from handler.param_process import get_radar_params
-from handler.adc_load import get_regular_data
 from module.fft_process import FFTProcessor
-from utility.tool_box import reshape_fortran
 
 
 class BPProcessor:
@@ -30,6 +28,7 @@ class BPProcessor:
         """
 
         # self.BPObj = BPObj
+        self.device = device
         self.BPObj = {
             "antDis" : 0.002,
             "lambda": 0.003843689942344651,
@@ -39,9 +38,9 @@ class BPProcessor:
             "RX_position":[[0, 0, 7],[0, 0, 8],[0, 0, 9],[0, 0, 10]],
             "FOV_azi": [-15, 15],
             "FOV_ele": [-45, 45],
-            "DOAFFTSize": 128
+            "rangeFFTSize": 128
         }
-        self.device = device
+        
 
         # Set default parameters for radar hetamap
         self.default = {
@@ -49,8 +48,6 @@ class BPProcessor:
             'y_min': 0.4, 'y_max': 4.4, 'y_bins': 1000,
             'z_min': 0, 'z_max': 0.001, 'z_bins': 1
         }
-
-        pass
 
     def run(self, datas, positions, angles, timestamps, fft_processor):
         """
@@ -75,7 +72,7 @@ class BPProcessor:
         rangefft_out = fft_processor.range_fft(datas).squeeze()
 
         # Perform Back Projection Algorithm
-        bp_output = self.back_projection(rangefft_out, positions, angles, fov_mask=True)
+        bp_output = self.back_projection(rangefft_out, positions, angles, fov_mask=False)
         pass
     
     def back_projection(self, datas, positions, angles, fov_mask=True):
@@ -86,50 +83,69 @@ class BPProcessor:
             datas (torch.Tensor): The output data from Range FFT.
             positions (np.ndarray): The positions of the radar.
             angles (np.ndarray): The angles of the radar.
-            timestamps (np.ndarray): The timestamps of the radar.
+            fov_mask (bool): Whether to perform Field of View (FOV) Mask.
             
         Returns:
-            bp_output (torch.Tensor): The output data from Back Projection Algorithm.
+            bp_output (np.ndarray): The output data from Back Projection Algorithm.
         """
 
-        # Extract basic parameters
-        k0 = 2 * torch.pi / self.BPObj["lambda"]
-
         # Create initial radar heatmap
-        grid = self.init_heatmap()
-        img = torch.zeros(grid.shape[:-1], dtype=torch.cfloat, device=self.device)
-        cnt = torch.ones(grid.shape[:-1], dtype=torch.cfloat, device=self.device)
-        img_vec, cnt_vec = img.view(-1), cnt.view(-1)
+        grid = self.init_grid()
+        heatmap = torch.zeros(grid.shape[:-1], dtype=torch.cfloat, device=self.device)
+        cntmap = torch.ones(grid.shape[:-1], dtype=torch.cfloat, device=self.device)
+        heatmap_vec, cntmap_vec = heatmap.view(-1), cntmap.view(-1)
         
         # Perform Back Projection Algorithm
-        for idx in range(datas.shape[0]):
+        for frame_idx in range(datas.shape[0]):
             
             # Extract the position and angle for current frame
-            position, angle = positions[idx], angles[idx]
-            distances_TXs, distances_RXs = self.cal_distance(grid, position)
+            position, angle = positions[frame_idx], angles[frame_idx]
+            distances_TXs, distances_RXs, radar_position = self.cal_distance(grid, position)
 
             # Loop over all the mimo data in the current frame
             for rx_idx in range(datas.shape[2]):
                 for tx_idx in range(datas.shape[3]):
                     
-                    distances = (distances_TXs[tx_idx] + distances_RXs[rx_idx]) / 2
+                    # Extract the chirp data and distances for current mimo data
+                    frame_data = datas[frame_idx, :, rx_idx, tx_idx]
+                    distances = ((distances_TXs[tx_idx] + distances_RXs[rx_idx]) / 2).view(-1)
                     
-                    # 这里分别对应的是索引的上界、下界和小数部分，上面的distance是local的
-                    range_idxs_down = (distances / self.BPObj['rangebinSize']).to(torch.uint8)
-                    range_idxs_up = (distances / self.BPObj['rangebinSize']).to(torch.uint8) + 1
-                    range_idxs_small = (distances / self.BPObj['rangebinSize']) - (distances / self.BPObj['rangebinSize']).to(torch.uint8)
-
+                    # Calculate the grid index for the distances
+                    grid_idx_real = distances / self.BPObj['rangebinSize']
+                    grid_idx_lower = grid_idx_real.floor().to(torch.int64)
+                    grid_idx_upper = grid_idx_real.ceil().to(torch.int64)
+                    grid_idx_frac = (grid_idx_real - grid_idx_lower).to(torch.float64) 
                     # Perform the FOV Mask
                     if fov_mask:
-                        FOV_valid_index = self.fov_mask(grid, position, angle, range_idxs_up)
-                        print(FOV_valid_index.shape)
-                        self.distance_display(FOV_valid_index)
-                        aaaa
-                        pass
+                        FOV_valid_index = self.fov_mask(grid, radar_position, angle, grid_idx_upper)
+                    else:
+                        FOV_valid_index = torch.ones_like(grid_idx_upper, dtype=torch.bool)
 
-            pass
+                    # Calculate the frame contributions to the radar heatmap
+                    frame_data_upper = torch.gather(frame_data, 0, grid_idx_upper[FOV_valid_index])
+                    frame_data_lower = torch.gather(frame_data, 0, grid_idx_lower[FOV_valid_index])
+                    frame_data_interp = torch.polar(
+                        torch.lerp(torch.abs(frame_data_lower), torch.abs(frame_data_upper), grid_idx_frac[FOV_valid_index]),
+                        torch.lerp(torch.angle(frame_data_lower), torch.angle(frame_data_upper), grid_idx_frac[FOV_valid_index])
+                    )
+                    
+                    # Calculate the phases and attenuations for the radar heatmap
+                    k0 = 2 * torch.pi / self.BPObj["lambda"]
+                    phases = torch.exp(-1j * k0 * 2 * distances[FOV_valid_index])
+                    attenuation = 4 * torch.pi * torch.pow(distances[FOV_valid_index], 0.7)
+                    frame_contributions = frame_data_interp * phases * attenuation
+                    
+                    # Accumulate the contributions to the radar heatmap
+                    heatmap_vec[FOV_valid_index] += frame_contributions
+                    cntmap_vec[FOV_valid_index] += 1
 
-    def init_heatmap(self, params=None):
+        # Return the output data from Back Projection Algorithm
+        heatmap_avg = heatmap / cntmap
+        heatmap_norm = heatmap_avg / torch.max(torch.abs(heatmap_avg))
+        return heatmap_norm.cpu().numpy()
+
+
+    def init_grid(self, params=None):
         """
         Initialize the heatmap grid for back projection.
 
@@ -232,34 +248,35 @@ class BPProcessor:
         distances_RXs = compute_distances(grid, chirp_rX_positions)
 
         # Return the distance
-        return distances_TXs, distances_RXs
+        return distances_TXs, distances_RXs, chirp_tx_positions[0]
 
-    def distance_display(self, distances):
+    def bp_display(self, heatmap):
         """
-        Display the distance between the radar and the target grid.
+        Display the Back Projection Algorithm results.
 
         Parameters:
-            distances (torch.Tensor): The distances between the radar and the target grid.
+            heatmap (np.ndarray): The output data from Back Projection Algorithm.
         """
 
-        # Extract the distance
-        distances = distances.squeeze().cpu().numpy()
+        # Convert to np.ndarray if the input is a tensor
+        if isinstance(heatmap, torch.Tensor):
+            heatmap = heatmap.cpu().numpy()
 
         # Create the mesh grid
-        x = np.arange(0, distances.shape[0])
-        y = np.arange(0, distances.shape[1])
+        x = np.arange(0, heatmap.shape[0])
+        y = np.arange(0, heatmap.shape[1])
         X, Y = np.meshgrid(y, x)
 
-        # Display the 3D mesh of distances
+        # Display the 3D mesh of back projection heatmap
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(X, Y, distances, cmap='viridis')
+        ax.plot_surface(X, Y, heatmap, cmap='viridis')
 
         # Set the title and labels
-        ax.set_title("3D Mesh of Distances")
+        ax.set_title("3D Mesh of Back Projection Heatmap")
         ax.set_xlabel("X axis")
         ax.set_ylabel("Y axis")
-        ax.set_zlabel("Distances")
+        ax.set_zlabel("Back Projection Heatmap")
 
         plt.show()
 
@@ -283,18 +300,22 @@ class BPProcessor:
         voxels_transformed = rotation_matrix.T.matmul(voxels - position.reshape(3, 1))
 
         r = torch.norm(voxels_transformed, dim=0)
-        angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 / np.pi
-        angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / np.pi
-        # angle_azi = angle_azi.reshape(grid.shape[:3])
-        # self.distance_display(angle_azi)
-        # aaaa
-        FOV_valid_index = ((angle_azi >= -1 * self.BPObj['FOV_azi'][0]) & (angle_azi <= self.BPObj['FOV_azi'][1]) & (angle_ele >= -1 * self.BPObj['FOV_ele'][0]) & (angle_ele <= self.BPObj['FOV_ele'][1]) & (range_idxs_vec < self.BPObj['DOAFFTSize']))
+        angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 /torch.pi
+        angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / torch.pi
+
+        FOV_valid_index = reduce(
+            torch.logical_and, (
+                angle_azi >= self.BPObj['FOV_azi'][0], 
+                angle_azi <= self.BPObj['FOV_azi'][1],
+                angle_ele >= self.BPObj['FOV_ele'][0],
+                angle_ele <= self.BPObj['FOV_ele'][1],
+                range_idxs_vec < self.BPObj['rangeFFTSize']
+            )
+        )
         
-        return FOV_valid_index.reshape(grid.shape[:3])
+        # return FOV_valid_index.reshape(grid.shape[:3])
         return FOV_valid_index
-
-        
-
+  
     def convert_quaternion(self,q1):
         """
         Converts a quaternion representing a rotation in the x-y-z coordinate system to a quaternion
@@ -331,12 +352,4 @@ class BPProcessor:
         """
         pass
 
-    def bp_display(self, bp_output):
-        """
-        Visualizes the Back Projection output.
-
-        Parameters:
-            bp_output (np.ndarray): The output data from Back Projection Algorithm.
-        """
-        pass
         
