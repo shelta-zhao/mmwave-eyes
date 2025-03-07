@@ -6,15 +6,10 @@
 """
 
 import os
-import yaml
-import sys
 import numpy as np
 import pandas as pd
 import concurrent.futures
 from datetime import datetime
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from handler.param_process import get_radar_params
 
 
 def get_regular_data(data_path, readObj, frame_idx='all', timestamp=False, save=False, load=False):
@@ -281,28 +276,4 @@ def generate_regular_data(readObj, time_domain_datas):
             regular_data = list(executor.map(process_frame, range(num_frames)))
     
     return np.stack(regular_data)
-
-
-if __name__  == "__main__":
-
-    # Parse data config & Get readObj
-    with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)[0]
-    data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
-    config_path = os.path.join("data/radar_config", data["config"])
-    readObj = get_radar_params(config_path, data['radar'])['readObj']
-
-    # Test timestamp extraction
-    timestamp = get_timestamps(data_path)
-    print(f"Timestamp: {timestamp}")
     
-    # Test frame loading
-    bin_file_frames, file_handles = get_num_frames(data_path, readObj['dataSizeOneFrame'])
-    time_domain_data = load_one_frame(1, bin_file_frames, file_handles, readObj['dataSizeOneFrame'])
-    print(type(time_domain_data))
-    print(time_domain_data.shape)
-
-    # Test regular data
-    regular_data = generate_regular_data(readObj, time_domain_data)
-    print(type(regular_data))
-    print(regular_data.shape)

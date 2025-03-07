@@ -7,17 +7,12 @@
 
 import os
 import sys
-import yaml
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from handler.param_process import get_radar_params
-from handler.adc_load import get_regular_data
-from module.fft_process import FFTProcessor
-from module.cfar_process import CFARProcessor
 from utility.tool_box import peak_detect
-from utility.visualizer_box import PCD_display
 
 
 class DOAProcessor:
@@ -224,34 +219,40 @@ class DOAProcessor:
                 doa_result_filtered.append(point1)
 
         return doa_result_filtered
-
-
-        
-if __name__ == "__main__":
-
-    # Parse data config & Get radar params
-    with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)[0]
-    data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
-    config_path = os.path.join("data/radar_config", data["config"])
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Get radar params
-    radar_params = get_radar_params(config_path, data['radar'], load=False)
+    def PCD_display(self, point_cloud_data):
+        """
+        Plot the point cloud data in a 3D scatter plot.
 
-    # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], 'all', load=False, timestamp=True)
+        Parameters:
+        - point_cloud_data: A Numpy.ndarray of shape (N, 14), where:
+            - Columns 2, 3, 4 are X, Y, Z coordinates.
+            - Column 0 is the frame index.
+        """
 
-    # Perform Range & Doppler FFT
-    fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
-    fft_output = fft_processor.run(regular_data)
-    
-    # Perform CFAR-CASO detection
-    cfar_processor = CFARProcessor(radar_params['detectObj'], device)
-    detection_results = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
+        # Extract X, Y, Z coordinates
+        x = point_cloud_data[:, 2]
+        y = point_cloud_data[:, 3]
+        z = point_cloud_data[:, 4]
+        velocity = point_cloud_data[:, 6]
 
-    # Test DOA Estimation
-    doa_processor = DOAProcessor(radar_params['DOAObj'], device)
-    doa_output = doa_processor.run(detection_results)
-    PCD_display(doa_output)
-    print(len(doa_output))
+        # Create 3D scatter plot
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Scatter plot with color based on frame indices
+        scatter = ax.scatter(x, y, z, c=velocity, cmap='viridis', s=20, alpha=0.8)
+
+        # Add a color bar
+        cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
+        cbar.set_label('Velocity', rotation=270, labelpad=15)
+        scatter.set_clim(-3, 3)
+
+        # Set axis labels
+        ax.set_xlabel('X (meters)')
+        ax.set_ylabel('Y (meters)')
+        ax.set_zlabel('Z (meters)')
+
+        # Set title and show
+        ax.set_title('3D Point Cloud')
+        plt.show()

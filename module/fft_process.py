@@ -5,14 +5,9 @@
     Description   : Define FFT Processor, including Range FFT & Doppler FFT.
 """
 
-import os
-import sys
-import yaml
 import torch
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from handler.param_process import get_radar_params
-from handler.adc_load import get_regular_data
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 class FFTProcessor:
@@ -107,7 +102,7 @@ class FFTProcessor:
         scale_on, scale_factor = self.dopplerFFTObj['FFTOutScaleOn'], self.dopplerFFTObj['scaleFactorDoppler']
 
         # Generate window coefficient
-        win_coeff = torch.hann_window(input.shape[2] + 2, periodic=False, dtype=torch.float64).to(self.device)[1:-1]
+        win_coeff = torch.hann_window(input.shape[2] + 2, periodic=True, dtype=torch.float64).to(self.device)[1:-1]
         # Apply Doppler-domain windowing
         input = input * win_coeff[None, None, :, None, None] if win_on else input
         # Perform FFT for each TX/RX chain
@@ -117,29 +112,35 @@ class FFTProcessor:
 
         # Return doppler fft result
         return fft_output
-
-
-if __name__ == "__main__":
     
-    # Parse data config & Get radar params
-    with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)[0]
-    data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
-    config_path = os.path.join("data/radar_config", data["config"])
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def fft_display(self, fft_output):
+        """
+        Plot the 3D Range-Doppler FFT Spectrum.
 
-    # Get radar params
-    radar_params = get_radar_params(config_path, data['radar'], load=False)
+        Parameters:
+        - fft_output: A tensor of shape (range_fft_size, doppler_fft_size).
+        """
 
-    # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)
-    input = torch.tensor(regular_data, dtype=torch.complex64).to(device)
-    
-    # Test Range FFT & Doppler FFT
-    fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
-    
-    range_fft_output = fft_processor.range_fft(input)
-    print(range_fft_output.shape)
-    
-    doppler_fft_out = fft_processor.doppler_fft(range_fft_output)
-    print(doppler_fft_out.shape)
+        # Convert detection results to numpy
+        fft_output = fft_output.cpu().numpy()
+
+        # Get the magnitude of the FFT output
+        x, y = np.arange(fft_output.shape[0]), np.arange(fft_output.shape[1])
+        X, Y = np.meshgrid(x, y)
+
+        # Get the magnitude of the FFT output
+        Z = np.abs(fft_output.T)
+
+        # Create 3D plot
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Draw 3D spectrum
+        ax.plot_surface(X, Y, Z, cmap='viridis')
+        ax.set_xlabel("Range FFT Bins")
+        ax.set_ylabel("Doppler FFT Bins")
+        ax.set_zlabel("Magnitude")
+
+        # Set title and show
+        ax.set_title("3D Range-Doppler FFT Spectrum")
+        plt.show()

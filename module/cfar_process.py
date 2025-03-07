@@ -7,14 +7,11 @@
 
 import os
 import sys
-import yaml
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from handler.param_process import get_radar_params
-from handler.adc_load import get_regular_data
-from module.fft_process import FFTProcessor
 from utility.tool_box import reshape_fortran
 
 
@@ -297,28 +294,47 @@ class CFARProcessor:
 
         # Return the detected objects
         return N_obj_valid, Ind_obj_valid, noise_obj_valid
-
-
-if __name__ == "__main__":
     
-    # Parse data config & Get radar params
-    with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)[0]
-    data_path = os.path.join("data/adc_data", f"{data['prefix']}/{data['index']}")
-    config_path = os.path.join("data/radar_config", data["config"])
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Get radar params
-    radar_params = get_radar_params(config_path, data['radar'], load=False)
+    def detect_display(self, detection_results, sig_integrate):
+        """
+        Visualizes CFAR detection results alongside Doppler FFT output.
 
-    # Get regular raw radar data
-    regular_data, timestamp = get_regular_data(data_path, radar_params['readObj'], '1', timestamp=True)
+        Parameters:
+        - detection_results: (N, 8) array
+        - sig_integrate: 2D array representing the Doppler FFT output
+        """
 
-    # Get FFT Output
-    fft_processor = FFTProcessor(radar_params['rangeFFTObj'], radar_params['dopplerFFTObj'], device)
-    fft_output = fft_processor.run(regular_data)
-    
-    # Test CFAR-CASO
-    cfar_processor = CFARProcessor(radar_params['detectObj'], device)
-    cfar_output, _ = cfar_processor.run(fft_output[0,:256,:,:,:], 0)
-    print(cfar_output.shape)
+        # Convert detection results to numpy
+        detection_results = detection_results.cpu().numpy()
+
+        # Extract data
+        range_inds = detection_results[:, 1]     # rangeInd
+        doppler_inds = detection_results[:, 3]   # dopplerInd
+        snr_values = detection_results[:, 7]     # estSNR
+        power_values = detection_results[:, 6]   # signalPower
+
+        # Normalize SNR for color mapping
+        snr_norm = (snr_values - snr_values.min()) / (snr_values.max() - snr_values.min() + 1e-6)
+        
+        # Normalize power to adjust marker sizes
+        power_norm = (power_values - power_values.min()) / (power_values.max() - power_values.min() + 1e-6)
+        marker_sizes = 20 + 20 * power_norm      # Scale marker size appropriately
+        
+        # Create the figure
+        plt.figure(figsize=(10, 6))
+        
+        # Display Doppler FFT output as a heatmap
+        plt.imshow(sig_integrate.T, aspect='auto', origin='lower', cmap='jet')
+        plt.colorbar(label="RDM Magnitude")
+        
+        # Overlay CFAR detections
+        plt.scatter(range_inds, doppler_inds, c=snr_norm, cmap='hot', edgecolors='white', s=marker_sizes, alpha=0.75)
+        plt.colorbar(label="Normalized SNR")
+        
+        # Axis labels and title
+        plt.xlabel("Doppler Index")
+        plt.ylabel("Range Index")
+        plt.title("CFAR Detections on Doppler FFT")
+        
+        # Show the visualization
+        plt.show()

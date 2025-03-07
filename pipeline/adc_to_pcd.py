@@ -17,7 +17,6 @@ from handler.adc_load import get_regular_data
 from module.fft_process import FFTProcessor
 from module.cfar_process import CFARProcessor
 from module.doa_process import DOAProcessor
-from utility.visualizer_box import PCD_display
 
 
 def adc_to_pcd(adc_list, device, save=False, display=False):
@@ -82,7 +81,7 @@ def adc_to_pcd(adc_list, device, save=False, display=False):
 
         # Display the PCD data if required
         if display:
-            PCD_display(point_cloud_data)
+            doa_processor.PCD_display(point_cloud_data)
 
         # ====================================================================================
         # Add your own code here to process the PCD data
@@ -90,9 +89,4 @@ def adc_to_pcd(adc_list, device, save=False, display=False):
 
         # Add a line break
         print("------------------------------------------------------------------------------------------")
-            
-
-if __name__ == "__main__":
-
-    # Test the ADC to PCD pipeline
-    adc_to_pcd("adc_list", "cpu", save=True, display=False)
+        

@@ -600,18 +600,4 @@ def save_params(radar_params, config_path):
         os.remove(file_path)
     with open(file_path, 'w') as file:
         yaml.dump(radar_params, file, default_flow_style=False, sort_keys=False, width=-1)
-
-
-if __name__ == "__main__":
-    
-    # Parse radar config
-    with open("adc_list.yaml", "r") as file:
-        data = yaml.safe_load(file)[0]
-    config_path = os.path.join("data/radar_config", data["config"])
-    
-    # Test generate params
-    radar_params = generate_params(config_path, data['radar'])
-    if not radar_params:
-        print("Invalid JSON files")
-    else:
-        print(radar_params)
+        
