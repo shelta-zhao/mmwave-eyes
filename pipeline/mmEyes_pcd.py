@@ -81,7 +81,7 @@ class mmEyesPCD:
             # Perform mmEyes PCD pipeline for each frame
             global_point_cloud = []
             radar_ele_all = np.load(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy"))
-            for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
+            for frame_idx in tqdm(range(30, len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
 
                 # Load data of different sensors
                 radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
@@ -98,7 +98,7 @@ class mmEyesPCD:
                 lidar_transformed = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
                 global_point_cloud.append(lidar_transformed)
 
-                if frame_idx == 5:
+                if frame_idx == 30:
                     self.pcd_display(np.vstack(global_point_cloud))
                     aaaa
                 pass
@@ -153,7 +153,11 @@ class mmEyesPCD:
             position = np.array([position[0], position[2], -position[1]])
 
         # Apply rotation and translation
-        transformed_points = rotation.apply(points[:, :3]) + position
+        transformed_xyz = rotation.apply(points[:, :3]) + position
+
+        # Create a new array to hold the transformed points, preserving other features
+        transformed_points = np.copy(points)
+        transformed_points[:, :3] = transformed_xyz
 
         # Restore coordinate system if ZED is not used
         if transform_flag:
@@ -173,18 +177,17 @@ class mmEyesPCD:
         x = point_cloud_data[:, 0]
         y = point_cloud_data[:, 1]
         z = point_cloud_data[:, 2]
-        # velocity = point_cloud_data[:, 6]
-
+        instance = point_cloud_data[:, 3]
+        
         # Create 3D scatter plot
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
 
         # Scatter plot with color based on frame indices
-        # scatter = ax.scatter(x, y, z, c=velocity, cmap='viridis', s=20, alpha=0.8)
-        scatter = ax.scatter(x, y, z, s=20, alpha=0.8)
+        scatter = ax.scatter(x, y, z, c=instance, cmap='viridis', s=20, alpha=0.8)
 
         # Add a color bar
-        # cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
+        cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
         # cbar.set_label('Velocity', rotation=270, labelpad=15)
         # scatter.set_clim(-3, 3)
 
