@@ -7,13 +7,14 @@
 
 import os
 import sys
-import yaml
 import torch
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from utility.tool_box import parse_arguments
 from pipeline.adc_to_pcd import adc_to_pcd
 from pipeline.dreamPCD_pipeline import DreamPCDPipeline
+from pipeline.mmEyes_pcd import mmEyesPCD
 
 
 if __name__ == "__main__":
@@ -32,9 +33,12 @@ if __name__ == "__main__":
         # ====================================================================================
         # Add your own code here to process the PCD data
         # ====================================================================================
+        
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        dream_pcd = DreamPCDPipeline()
-        dream_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
+        mmEyes_pcd = mmEyesPCD(device)
+        mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
+        # dream_pcd = DreamPCDPipeline()
+        # dream_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
 
     else:
         
