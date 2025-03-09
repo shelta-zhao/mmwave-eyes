@@ -113,11 +113,11 @@ class DOAProcessor:
         for iobj, result in enumerate(doa_estimate_result):
             # Coordinate transformation (x, y, z)
             azimuth, elevation = np.deg2rad(result['angles'][0].item()), np.deg2rad(result['angles'][1].item())
-            point_cloud_data[iobj, 0] = result['frameIdx']                                    # Frame index
-            point_cloud_data[iobj, 1] = iobj + 1                                              # Object index (start from 1)
-            point_cloud_data[iobj, 2] = result['range'] * np.sin(azimuth) * np.cos(elevation) # X
-            point_cloud_data[iobj, 3] = result['range'] * np.cos(azimuth) * np.cos(elevation) # Y
-            point_cloud_data[iobj, 4] = result['range'] * np.sin(elevation)                   # Z
+            point_cloud_data[iobj, 0] = result['range'] * np.sin(azimuth) * np.cos(elevation) # X
+            point_cloud_data[iobj, 1] = result['range'] * np.cos(azimuth) * np.cos(elevation) # Y
+            point_cloud_data[iobj, 2] = result['range'] * np.sin(elevation)                   # Z
+            point_cloud_data[iobj, 3] = result['frameIdx']                                    # Frame index
+            point_cloud_data[iobj, 4] = iobj + 1                                              # Object index (start from 1)
 
             # Distance, velocity, azimuth, elevation
             point_cloud_data[iobj, 5] = result['range']
@@ -226,14 +226,13 @@ class DOAProcessor:
 
         Parameters:
         - point_cloud_data: A Numpy.ndarray of shape (N, 14), where:
-            - Columns 2, 3, 4 are X, Y, Z coordinates.
-            - Column 0 is the frame index.
+            - Columns 0, 1, 2 are X, Y, Z coordinates.
         """
 
         # Extract X, Y, Z coordinates
-        x = point_cloud_data[:, 2]
-        y = point_cloud_data[:, 3]
-        z = point_cloud_data[:, 4]
+        x = point_cloud_data[:, 0]
+        y = point_cloud_data[:, 1]
+        z = point_cloud_data[:, 2]
         velocity = point_cloud_data[:, 6]
 
         # Create 3D scatter plot

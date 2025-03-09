@@ -11,7 +11,7 @@ import torch
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from utility.tool_box import parse_arguments
+from utility.tool_box import parse_arguments, adc_list_generate
 from pipeline.adc_to_pcd import adc_to_pcd
 from pipeline.dreamPCD_pipeline import DreamPCDPipeline
 from pipeline.mmEyes_pcd import mmEyesPCD
@@ -22,25 +22,24 @@ if __name__ == "__main__":
     # Parse options in the command line
     args = parse_arguments()
 
+    # Check if CUDA is available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     # Perform the processing pipeline
     if args.pipeline == 1:
-
         # Traditional pipeline to generate PCD from raw radar data
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         point_cloud_data = adc_to_pcd(args.yaml_path, device, save=args.save, display=args.display)
     elif args.pipeline == 2:
-        
-        # ====================================================================================
-        # Add your own code here to process the PCD data
-        # ====================================================================================
-        
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Generate the list of data
+        adc_list_generate("data/adc_data", output_file="adc_list.yaml")
+
+        # Perform the mmEyes-PCD pipeline
         mmEyes_pcd = mmEyesPCD(device)
         mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
-        # dream_pcd = DreamPCDPipeline()
-        # dream_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
-
+    elif args.pipeline == 3:
+        # Perform the Dream-PCD pipeline
+        dream_pcd = DreamPCDPipeline()
+        dream_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
     else:
-        
         print("Invalid pipeline option. Please choose 1 for the traditional pipeline.")
         sys.exit(1) 

@@ -5,9 +5,41 @@
     Description   : This script defines all help functions.
 """
 
+import os
+import yaml
 import torch
 import argparse
 from itertools import count
+
+
+def adc_list_generate(data_path, output_file="adc_list.yaml"):
+    """
+    Generate the list of data from the given data path.
+
+    Parameters:
+        data_path (str): The path to the radar data.
+
+    Returns:
+        list: The list of data.
+    """
+
+    adc_list = []
+
+    # Iterate through the folders in the data path
+    for folder in os.listdir(data_path):
+        entry = {
+            "prefix": str(folder),
+            "index": "",
+            "config": "1843_azi & 1843_coherentEle",
+            "radar": "AWR1843Boost"
+        }
+        adc_list.append(entry)
+    
+    # Save the list to a YAML file
+    with open(output_file, "w", encoding="utf-8") as f:
+        yaml.dump(adc_list, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    print("ADC list generated successfully.")
 
 
 def reshape_fortran(x, shape):

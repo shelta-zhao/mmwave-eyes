@@ -64,7 +64,7 @@ class mmEyesPCD:
             print(f"\nProcessing data: {adc_data['prefix']}")
 
             # Generate regular data & radar params
-            data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}/{adc_data['index']}")
+            data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}")
             
             # Check if the lidar data is processed
             if not os.path.exists(os.path.join("data/adc_data", adc_data['prefix'],"Lidar/Lidar_pcd")):
@@ -93,8 +93,8 @@ class mmEyesPCD:
 
                 # Perform Polar Back Projection
 
-
-                # radar_ele = radarEyesLoader.load_data(synchronized_data['radar_ele']['paths'][frame_idx], sensor="radar_ele")
+                pass
+            
 
     def process_lidar_data(self, data_path):
         """
