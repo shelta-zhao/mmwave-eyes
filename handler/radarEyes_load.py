@@ -18,7 +18,7 @@ class RadarEyesLoader:
         """
         Initialize the RadarEyesLoader class.
         """
-        
+
         self.ADC_EXTENSIONS = ['.mat', '.MAT', 'bin', 'BIN', "jpg", "JPG","png","PNG", "npy"]
 
     def load_data(self, data_path, sensor='radar_azi'):
@@ -249,48 +249,6 @@ class RadarEyesLoader:
         except Exception as e:
             print(f"Error: Failed to delete missing frames: {e}")
 
-    def trans_coordinate(self, points, position, quaternion, trans_flag=True):
-        """
-        Transforms the point cloud from its local coordinate system to the global coordinate system.
-
-        Parameters:
-            points (np.ndarray): Input point cloud, the index of XYZ is 2:5.
-            position (list): Sensor position in the global coordinate system [x, y, z].
-            quaternion (list): Quaternion representing the sensor's orientation (w, x, y, z).
-            trans_flag (bool): Whether to apply special coordinate transformation.
-
-        Returns:
-            np.ndarray: Transformed point cloud.
-        """
-
-        if points.shape[0] == 0:
-            return points
-
-        # Convert quaternion to rotation matrix
-        rotation = Rotation.from_quat(quaternion)
-
-        # Extract only (x, y, z) from points
-        points_xyz = points[:, 2:5].copy()
-        features = np.hstack((points[:, :2], points[:, 5:]))
-
-        if trans_flag:
-            # LiDAR → Camera coordinate system transformation
-            points_xyz[:, [1, 2]] = points_xyz[:, [2, 1]]
-            points_xyz[:, 2] *= -1
-            position = [position[0], position[2], -position[1]]
-
-        # Apply rotation and translation
-        transformed_xyz = rotation.apply(points_xyz) + np.array(position)
-
-        if trans_flag:
-            # Convert back to LiDAR coordinate system
-            transformed_xyz[:, [1, 2]] = transformed_xyz[:, [2, 1]]
-            transformed_xyz[:, 1] *= -1
-
-        # Construct the transformed point cloud
-        transformed_points = np.hstack((features[:, :2], transformed_xyz, features[:, 2:]))
-
-        return transformed_points
 
 class LidarDataProcessor:
 
@@ -386,6 +344,7 @@ class LidarDataProcessor:
         Returns:
             result (int): The signed integer obtained from the concatenation and conversion.
         """
+
         # Convert x and y to hexadecimal strings
         hex_x = hex(x)[2:].zfill(2)
         hex_y = hex(y)[2:].zfill(2)
@@ -411,6 +370,7 @@ class LidarDataProcessor:
             colors (np.ndarray): An array of color values associated with each point in the point cloud.
             point_cloud_points (np.ndarray): An array of points (x, y, z, instance) in the point cloud.
         """
+
         point_cloud_points_string = np.fromfile(lidar_file_name, dtype="|S8")
         point_cloud = o3d.geometry.PointCloud()
         point_cloud_points = []
@@ -452,6 +412,7 @@ class LidarDataProcessor:
         Returns:
             np.ndarray: Downsampled and denoised point cloud as an (M, 4) ndarray, where M <= num_points_target.
         """
+
         # Convert ndarray to Open3D PointCloud format
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points[:, :3])  # Only use the first 3 columns (x, y, z coordinates)

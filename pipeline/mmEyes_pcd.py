@@ -11,6 +11,7 @@ import sys
 import yaml
 import glob
 import shutil
+import copy
 import numpy as np
 from tqdm import tqdm
 from scipy.interpolate import interp1d
@@ -91,7 +92,7 @@ class mmEyesPCD:
 
 
                 # Perform Polar Back Projection
-                
+
 
                 # radar_ele = radarEyesLoader.load_data(synchronized_data['radar_ele']['paths'][frame_idx], sensor="radar_ele")
 
@@ -118,3 +119,37 @@ class mmEyesPCD:
             
             # Move the raw bin file to the ADC folder
             shutil.move(file_path, raw_folder)
+
+    def transform_point_cloud(self, points, position, angle, transform_flag):
+        """
+        Transform the local PCD to global PCD based on the position and angle.
+
+        Parameters:
+            points (np.ndarray): The point cloud data to be transformed.
+            position (np.ndarray): The position to be transformed.
+            angle (np.ndarray): The angle to be transformed.
+            transform_flag (str): The flag to determine the transformation type: True if ZED is NOT used.
+
+        Returns:
+            transformed_point_cloud (np.ndarray): The transformed point cloud data.
+        """
+        
+        if points.shape[0] == 0:
+            return points
+        
+        # Convert quaternion to rotation matrix
+        rotation = Rotation.from_quat(angle)
+
+        # PCD - Camera coordinate transformation
+        if transform_flag:
+            points[:, [1, 2]] = points[:, [2, 1]] * [1, -1]
+            position = np.array([position[0], position[2], -position[1]])
+
+        # Apply rotation and translation
+        transformed_points = rotation.apply(points[:, :3]) + position
+
+        # Restore coordinate system if ZED is not used
+        if transform_flag:
+            transformed_points[:, [1, 2]] = transformed_points[:, [2, 1]] * [1, -1]
+
+        return transformed_points
