@@ -29,7 +29,7 @@ def adc_list_generate(data_path, output_file="adc_list.yaml"):
     for folder in os.listdir(data_path):
         entry = {
             "prefix": str(folder),
-            "index": "",
+            "camera": "ZED",
             "config": "1843_azi & 1843_coherentEle",
             "radar": "AWR1843Boost"
         }

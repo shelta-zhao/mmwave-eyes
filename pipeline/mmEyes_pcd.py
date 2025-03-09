@@ -6,14 +6,13 @@
 """
 
 import os
-import re
 import sys
 import yaml
 import glob
 import shutil
-import copy
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Slerp, Rotation
 
@@ -61,7 +60,7 @@ class mmEyesPCD:
         for adc_data in adc_list:
             
             # Print the current data info
-            print(f"\nProcessing data: {adc_data['prefix']}")
+            print(f"\nProcessing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")
 
             # Generate regular data & radar params
             data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}")
@@ -80,6 +79,7 @@ class mmEyesPCD:
                 continue
 
             # Perform mmEyes PCD pipeline for each frame
+            global_point_cloud = []
             radar_ele_all = np.load(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy"))
             for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
 
@@ -87,15 +87,22 @@ class mmEyesPCD:
                 radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
                 lidar = radarEyesLoader.load_data(synchronized_data['lidar']['paths'][frame_idx], sensor="lidar")
 
-
                 # Perform Distributed Filter
 
 
                 # Perform Polar Back Projection
 
+                # Perform Cooridaate Transformation
+                position = synchronized_data['lidar']['positions'][frame_idx]
+                angle = synchronized_data['lidar']['angles'][frame_idx]                
+                lidar_transformed = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
+                global_point_cloud.append(lidar_transformed)
+
+                if frame_idx == 5:
+                    self.pcd_display(np.vstack(global_point_cloud))
+                    aaaa
                 pass
             
-
     def process_lidar_data(self, data_path):
         """
         Process the raw lidar data to pcd data.
@@ -153,3 +160,39 @@ class mmEyesPCD:
             transformed_points[:, [1, 2]] = transformed_points[:, [2, 1]] * [1, -1]
 
         return transformed_points
+
+    def pcd_display(self, point_cloud_data):
+        """
+        Display the point cloud data.
+
+        Parameters:
+            point_cloud_data (np.ndarray): The point cloud data to be displayed.
+        """
+
+        # Extract X, Y, Z coordinates
+        x = point_cloud_data[:, 0]
+        y = point_cloud_data[:, 1]
+        z = point_cloud_data[:, 2]
+        # velocity = point_cloud_data[:, 6]
+
+        # Create 3D scatter plot
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Scatter plot with color based on frame indices
+        # scatter = ax.scatter(x, y, z, c=velocity, cmap='viridis', s=20, alpha=0.8)
+        scatter = ax.scatter(x, y, z, s=20, alpha=0.8)
+
+        # Add a color bar
+        # cbar = plt.colorbar(scatter, ax=ax, pad=0.1, shrink=0.8)
+        # cbar.set_label('Velocity', rotation=270, labelpad=15)
+        # scatter.set_clim(-3, 3)
+
+        # Set axis labels
+        ax.set_xlabel('X (meters)')
+        ax.set_ylabel('Y (meters)')
+        ax.set_zlabel('Z (meters)')
+
+        # Set title and show
+        ax.set_title('3D Point Cloud')
+        plt.show()
