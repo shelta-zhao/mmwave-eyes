@@ -6,7 +6,6 @@
 """
 
 import os
-import copy
 import numpy as np
 from tqdm import tqdm
 
@@ -69,11 +68,10 @@ class UdpDataProcessor:
         
         # Parse the UDP packets
         all_frames, del_frame_index = self.parse_udp(data_path, udpPacketObj)
-        
+
         # Save the parsed data 
-        ADC_path = os.path.join(file_path, "1843_ele", "ADC")
-        if not os.path.exists(ADC_path):
-            os.makedirs(ADC_path)
+        ADC_path = os.path.join(data_path, "1843_ele", "ADC")
+        os.makedirs(ADC_path, exist_ok=True)
         np.save(os.path.join(ADC_path, "all_frames"), all_frames)
 
         # Save the frame shape
@@ -81,7 +79,7 @@ class UdpDataProcessor:
             f.write(f"Shape: {all_frames.shape}")
 
         # Save the missing frame index
-        file_path = os.path.join(data_path, "del_frame.txt")
+        file_path = os.path.join(data_path, "1843_ele", "del_frame.txt")
         if os.path.exists(file_path):
             os.remove(file_path)
         with open(file_path, "w") as file:
@@ -89,7 +87,8 @@ class UdpDataProcessor:
                 file.write(f"{index}\n")      
 
         # Update the timestamp file
-        self.complete_timestamp(os.path.join(data_path, "timestamp.txt"), all_frames.shape[0], time_interval=self.udpObj['framePeriodicty'])
+        self.complete_timestamp(os.path.join(data_path, "1843_ele", "timestamp.txt"), all_frames.shape[0], time_interval=self.udpObj['framePeriodicty'])
+
 
     def parse_udp(self, data_path, udpPacketObj):
         """
@@ -106,7 +105,8 @@ class UdpDataProcessor:
         
         # Initialize the basic parameters
         data_name = os.path.join(data_path, "1843_ele", "udpData.dat")
-        udp_index, expected_seq_num, del_frame_index, all_frames, fsize = -1, 1, [], [], os.path.getsize(data_name)
+        udp_index, expected_seq_num, del_frame_index, fsize, num_frames = -1, 1, [], os.path.getsize(data_name), 0
+        all_frames = np.empty((20000, self.udpObj['numAdcSamples'], self.udpObj['numLoopsIn1Frame'], self.udpObj['numRxChan'], self.udpObj['numChirpsIn1Loop']), dtype=np.complex64)
         progress_bar = tqdm(total=fsize, desc="Processing UDP Packets", unit="packet", ncols=90)
 
         # Parse the UDP packets
@@ -130,7 +130,7 @@ class UdpDataProcessor:
                 # Handle the missing packets with padding
                 missing_packets = current_seq_num - expected_seq_num
                 for _ in range(missing_packets):  # Fill missing packets + current packet
-                    dynamic_padding = copy.deepcopy(currUdpPacketData)
+                    dynamic_padding = np.copy(currUdpPacketData)
                     dynamic_padding[0:4] = np.array([
                         (expected_seq_num & 0x000000FF),
                         (expected_seq_num & 0x0000FF00) >> 8,
@@ -158,7 +158,8 @@ class UdpDataProcessor:
                 # Save the frames data
                 for ii in range(new_index.size):
                     frame_data = self.parse_frame(new_frames[ii])
-                    all_frames.append(frame_data)
+                    all_frames[num_frames] = frame_data
+                    num_frames += 1
   
             # Update the progress bar
             progress_bar.n = udp_index
@@ -168,7 +169,7 @@ class UdpDataProcessor:
         progress_bar.close()
 
         # Return the parsed data & the missing frame index
-        return np.array(all_frames).astype(np.complex64), del_frame_index
+        return all_frames[:num_frames], del_frame_index
 
     def getOneUdpPacket(self, filename, udp_index):
         """
@@ -271,7 +272,7 @@ class UdpDataProcessor:
                 obj['frameDataBuff'] = np.concatenate((obj['frameDataBuff'][obj['oneFrameDataSize']:], obj['zeroPadding']))
                 obj['frameDataBuff_index'] = obj['frameDataBuff_index'] - obj['oneFrameDataSize']
                 if i == 0:
-                    frames_data = currFrameData[None, :]
+                    frames_data = np.array([currFrameData])
                 else:
                     frames_data = np.concatenate((frames_data, currFrameData[None, :]))
                 frames_index = np.concatenate((frames_index, np.array([obj['frameId']])))
@@ -339,9 +340,4 @@ class UdpDataProcessor:
         else:
             print('Skip Warning: timestamp file is empty!')
 
-
-if __name__ == "__main__":
-
-    processor = UdpDataProcessor()
-    processor.save_radar_ele("data/adc_data/2023_06_30_20_13_01")
 
