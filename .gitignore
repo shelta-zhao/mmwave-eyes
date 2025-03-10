@@ -1,4 +1,5 @@
 #  File Ignore Addition
+/reference/
 /data/
 *.jpg
 *.png
