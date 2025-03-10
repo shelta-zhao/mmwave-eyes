@@ -66,6 +66,11 @@ class mmEyesPCD:
             # Generate regular data & radar params
             data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}")
             
+            # Check if the radar ele data is processed
+            if not os.path.exists(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy")):
+                self.process_radar_ele_data(os.path.join("data/adc_data", adc_data['prefix']))
+                print(f"Radar ele data processed successfully: {adc_data['prefix']}")
+
             # Check if the lidar data is processed
             if not os.path.exists(os.path.join("data/adc_data", adc_data['prefix'],"Lidar/Lidar_pcd")):
                 self.process_lidar_data(os.path.join("data/adc_data", adc_data['prefix']))
@@ -80,12 +85,13 @@ class mmEyesPCD:
                 continue
 
             # Perform mmEyes PCD pipeline for each frame
-            global_point_cloud = []
+            global_point_cloud, global_trajectory = [], []
             radar_ele_all = radarEyesLoader.load_data(os.path.join("data/adc_data", adc_data['prefix']))
-            np.load(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy"))
             for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
 
                 # Load data of different sensors
+                timestamp = synchronized_data['radar_azi']['timestamps'][frame_idx]
+                radar_ele = self.get_radar_ele(synchronized_data['radar_ele']['timestamps'], timestamp, radar_ele_all)
                 radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
                 lidar = radarEyesLoader.load_data(synchronized_data['lidar']['paths'][frame_idx], sensor="lidar")
 
@@ -94,11 +100,15 @@ class mmEyesPCD:
 
                 # Perform Polar Back Projection
 
-                # Perform Cooridaate Transformation
-                position = synchronized_data['lidar']['positions'][frame_idx]
-                angle = synchronized_data['lidar']['angles'][frame_idx]                
-                lidar_transformed = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
-                global_point_cloud.append(lidar_transformed)
+                # Perform Cooridnate Transformation
+                angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
+                angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
+                transformed_radar = self.transform_point_cloud(radar_azi, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
+                transformed_lidar = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
+                
+                # Merge the global features
+                global_point_cloud.append(transformed_radar)
+                global_trajectory.append(position_radar)
 
                 if frame_idx == 10:
                     method_pcd = np.vstack(global_point_cloud)
@@ -110,7 +120,21 @@ class mmEyesPCD:
                     self.pcd_display(method_pcd)
                     aaaa
                 pass
-            
+    
+    def process_radar_ele_data(self, data_path):
+        """
+        Process the raw radar ele data to regular data.
+
+        Parameters:
+            data_path (str): The path to the raw radar ele data.
+        """
+
+        # Create folders for raw radar ele data and regular data
+        udpDataProcessor = UdpDataProcessor()
+
+        # Process raw radar ele data
+        udpDataProcessor.save_radar_ele(data_path)
+
     def process_lidar_data(self, data_path):
         """
         Process the raw lidar data to pcd data.
@@ -134,6 +158,31 @@ class mmEyesPCD:
             
             # Move the raw bin file to the ADC folder
             shutil.move(file_path, raw_folder)
+
+    def get_radar_ele(self, timestamps, current_timestamp, radar_ele_all, sliding_window=None):
+        """
+        Get the radar ele data based on the time stamp.
+
+        Parameters:
+            timestamps (list): The list of timestamps.
+            current_timestamp (int): The time stamp to be searched.
+            radar_ele_all (np.ndarray): The radar ele data.
+            sliding_window (int): The size of the sliding window.
+
+        Returns:
+            radar_ele (np.ndarray): The radar ele data before current timestamp.
+        """
+
+        # Get the index of the time stamp
+        idx = max(0, np.searchsorted(timestamps, current_timestamp, side='right'))
+
+        # Get the radar ele data
+        if sliding_window is not None:
+            radar_ele = radar_ele_all[max(0, idx - sliding_window):idx]
+        else:
+            radar_ele = radar_ele_all[:idx]
+
+        return radar_ele
 
     def transform_point_cloud(self, points, position, angle, transform_flag):
         """

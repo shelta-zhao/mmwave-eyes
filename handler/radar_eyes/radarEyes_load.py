@@ -37,7 +37,7 @@ class RadarEyesLoader:
         if sensor == 'radar_azi':
             return np.fromfile(data_path.replace("PCD_SamePaddingUDPERROR", "ADC", 1), dtype = "complex128").reshape((1, 128, -1, 4, 3))
         elif sensor == 'radar_ele':
-            return np.load(os.path.join("data_path", "1843_ele", "ADC", "all_frames.npy"))
+            return np.load(os.path.join(data_path, "1843_ele", "ADC", "all_frames.npy"))
         elif sensor == 'lidar':
             return np.fromfile(data_path.replace("ADC", "Lidar_pcd"), dtype='float32').reshape((-1, 4))
         else:
