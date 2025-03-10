@@ -13,7 +13,6 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from utility.tool_box import parse_arguments, adc_list_generate
 from pipeline.adc_to_pcd import adc_to_pcd
-from pipeline.dreamPCD_pipeline import DreamPCDPipeline
 from pipeline.mmEyes_pcd import mmEyesPCD
 
 
@@ -31,15 +30,11 @@ if __name__ == "__main__":
         point_cloud_data = adc_to_pcd(args.yaml_path, device, save=args.save, display=args.display)
     elif args.pipeline == 2:
         # Generate the list of data
-        # adc_list_generate("data/adc_data", output_file="adc_list.yaml")
+        adc_list_generate(args.data_root, output_file="adc_list.yaml")
 
         # Perform the mmEyes-PCD pipeline
-        mmEyes_pcd = mmEyesPCD(device)
+        mmEyes_pcd = mmEyesPCD(args.data_root, device)
         mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
-    elif args.pipeline == 3:
-        # Perform the Dream-PCD pipeline
-        dream_pcd = DreamPCDPipeline()
-        dream_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
     else:
         print("Invalid pipeline option. Please choose 1 for the traditional pipeline.")
         sys.exit(1) 

@@ -29,9 +29,10 @@ from module.bp_process import BPProcessor
 
 class mmEyesPCD:
 
-    def __init__(self, device='cpu'):
+    def __init__(self, data_root, device='cpu'):
 
         self.device = device
+        self.data_root = data_root
         
         self.config_path_azi = os.path.join("data/radar_config", "1843_azi")
         self.config_path_ele = os.path.join("data/radar_config", "1843_coherentEle")
@@ -64,16 +65,16 @@ class mmEyesPCD:
             print(f"\nProcessing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")
 
             # Generate regular data & radar params
-            data_path = os.path.join("data/adc_data", f"{adc_data['prefix']}")
+            data_path = os.path.join(self.data_root, f"{adc_data['prefix']}")
             
             # Check if the radar ele data is processed
-            if not os.path.exists(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy")):
-                self.process_radar_ele_data(os.path.join("data/adc_data", adc_data['prefix']))
+            if not os.path.exists(os.path.join(self.data_root, adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy")):
+                self.process_radar_ele_data(os.path.join(self.data_root, adc_data['prefix']))
                 print(f"Radar ele data processed successfully: {adc_data['prefix']}")
 
             # Check if the lidar data is processed
-            if not os.path.exists(os.path.join("data/adc_data", adc_data['prefix'],"Lidar/Lidar_pcd")):
-                self.process_lidar_data(os.path.join("data/adc_data", adc_data['prefix']))
+            if not os.path.exists(os.path.join(self.data_root, adc_data['prefix'],"Lidar/Lidar_pcd")):
+                self.process_lidar_data(os.path.join(self.data_root, adc_data['prefix']))
                 print(f"Lidar data processed successfully: {adc_data['prefix']}")
 
             # Perform data synchronization
@@ -86,7 +87,7 @@ class mmEyesPCD:
 
             # Perform mmEyes PCD pipeline for each frame
             global_point_cloud, global_trajectory = [], []
-            radar_ele_all = radarEyesLoader.load_data(os.path.join("data/adc_data", adc_data['prefix']))
+            radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']))
             for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
 
                 # Load data of different sensors

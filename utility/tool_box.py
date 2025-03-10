@@ -127,6 +127,7 @@ def parse_arguments():
 
     Returns:
         argparse.Namespace: The parsed command-line arguments.
+        - data_root: Root path of dataset.
         - yaml_path: Path to the radar data file.
         - pipeline: Processing pipeline to use.
         - save: Whether to save the results to a file.
@@ -134,6 +135,7 @@ def parse_arguments():
     """
 
     parser = argparse.ArgumentParser(description='Convert radar data to PCD format.')
+    parser.add_argument('--data_root', type=str, default="data/adc_data", help='Root path of dataset.')
     parser.add_argument('--yaml_path', type=str, default="adc_list", help='Path to the radar data file.')
     parser.add_argument('--pipeline', type=int, default=1, help='Processing pipeline to use.')
     parser.add_argument('--save', action='store_true', help='Whether to save the results to a file.')
