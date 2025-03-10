@@ -18,8 +18,9 @@ from scipy.spatial.transform import Slerp, Rotation
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from handler.param_process import get_radar_params
-from handler.radarEyes_load import RadarEyesLoader, LidarDataProcessor
-from handler.adc_load import get_regular_data
+from handler.radar_eyes.radarEyes_load import RadarEyesLoader
+from handler.radar_eyes.udp_process import UdpDataProcessor
+from handler.radar_eyes.lidar_process import LidarDataProcessor
 from module.fft_process import FFTProcessor
 from module.cfar_process import CFARProcessor
 from module.doa_process import DOAProcessor
@@ -80,8 +81,9 @@ class mmEyesPCD:
 
             # Perform mmEyes PCD pipeline for each frame
             global_point_cloud = []
-            radar_ele_all = np.load(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy"))
-            for frame_idx in tqdm(range(30, len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
+            radar_ele_all = radarEyesLoader.load_data(os.path.join("data/adc_data", adc_data['prefix']))
+            np.load(os.path.join("data/adc_data", adc_data['prefix'],"1843_ele", "ADC", "all_frames.npy"))
+            for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
 
                 # Load data of different sensors
                 radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
@@ -98,8 +100,14 @@ class mmEyesPCD:
                 lidar_transformed = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
                 global_point_cloud.append(lidar_transformed)
 
-                if frame_idx == 30:
-                    self.pcd_display(np.vstack(global_point_cloud))
+                if frame_idx == 10:
+                    method_pcd = np.vstack(global_point_cloud)
+                    min_height = -1
+                    max_height = 3
+                    mask = (method_pcd[:, 2] >= min_height-1) & (method_pcd[:, 2] <= max_height+1)
+                    method_pcd = method_pcd[mask]
+                    method_pcd[:, 3] = method_pcd[:, 3] / np.max(method_pcd[:, 3])
+                    self.pcd_display(method_pcd)
                     aaaa
                 pass
             
@@ -164,6 +172,16 @@ class mmEyesPCD:
             transformed_points[:, [1, 2]] = transformed_points[:, [2, 1]] * [1, -1]
 
         return transformed_points
+
+    def trajectory_display(self, trajectory):
+        """
+        Display the trajectory.
+
+        Parameters:
+            trajectory (np.ndarray): The trajectory to be displayed.
+        """
+
+        pass
 
     def pcd_display(self, point_cloud_data):
         """

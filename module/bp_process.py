@@ -41,7 +41,6 @@ class BPProcessor:
             "rangeFFTSize": 128
         }
         
-
         # Set default parameters for radar hetamap
         self.default = {
             'x_min': -3, 'x_max': 3, 'x_bins': 2000,

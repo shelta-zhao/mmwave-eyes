@@ -31,7 +31,7 @@ if __name__ == "__main__":
         point_cloud_data = adc_to_pcd(args.yaml_path, device, save=args.save, display=args.display)
     elif args.pipeline == 2:
         # Generate the list of data
-        adc_list_generate("data/adc_data", output_file="adc_list.yaml")
+        # adc_list_generate("data/adc_data", output_file="adc_list.yaml")
 
         # Perform the mmEyes-PCD pipeline
         mmEyes_pcd = mmEyesPCD(device)
