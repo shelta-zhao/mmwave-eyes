@@ -91,8 +91,6 @@ class RadarEyesLoader:
 
         # Delete the missing frames according to the del_frame.txt
         radar_adc_azi, radar_timestamps_azi = self.del_miss_frame(radar_path_azi, radar_adc_azi, radar_timestamps_azi)
-        # if radar_adc_ele:
-        #     radar_adc_ele, radar_timestamps_ele = self.del_miss_frame(radar_path_ele, radar_adc_ele, radar_timestamps_ele)
 
         # Get the start & end time of the data
         start_time = max(map(min, [radar_timestamps_azi, radar_timestamps_ele, lidar_timestamps, camera_timestamps]))
@@ -135,17 +133,21 @@ class RadarEyesLoader:
             angles = np.array(angles)
             positions = positions[np.unique(camera_timestamps, return_index=True)[1]]
             angles = angles[np.unique(camera_timestamps, return_index=True)[1]]
-            
+
             # Create the interpolators for positions and rotations
             positions_interpolator = interp1d(camera_timestamps, positions, axis=0, kind='linear', fill_value='extrapolate')
             rotations = Rotation.from_quat(angles)
             slerp_interpolator = Slerp(camera_timestamps, rotations)
 
             # Filter out the invalid timestamps
+            with open(os.path.join(radar_path_ele, "del_frame.txt"), "r") as file:
+                del_frame_index = set(int(line.strip()) for line in file.readlines())
+            del_frame_index = set(index - 1 for index in del_frame_index)
             valid_indices = (radar_timestamps_ele >= camera_timestamps[0]) & (radar_timestamps_ele <= camera_timestamps[-1])
-            
+            valid_indices[list(del_frame_index)] = False
+
             # Save the synchronized data
-            # result['radar_ele']['paths'] = np.array(radar_adc_ele)[valid_indices].tolist()
+            result['radar_ele']['paths'] = valid_indices
             result['radar_ele']['timestamps'] = radar_timestamps_ele[valid_indices]
             result['radar_ele']['positions'] = positions_interpolator(result['radar_ele']['timestamps'])
             result['radar_ele']['angles'] = slerp_interpolator(result['radar_ele']['timestamps']).as_quat()
@@ -234,18 +236,18 @@ class RadarEyesLoader:
             radar_adc (list): The list of radar adc data after deleting the missing frames.
             radar_timestamps (list): The list of radar timestamps after deleting the missing frames.
         """
-
+        
         try:
             with open(os.path.join(path, "del_frame.txt"), "r") as file:
                 del_frame_index = set(int(line.strip()) for line in file.readlines())
 
-            radar_adc = [path for i, path in enumerate(radar_adc) if i not in del_frame_index]
-            radar_timestamps = [timestamp for i, timestamp in enumerate(radar_timestamps) if i not in del_frame_index]            
+            radar_adc = [path for i, path in enumerate(radar_adc, start=1) if i not in del_frame_index]
+            radar_timestamps = [timestamp for i, timestamp in enumerate(radar_timestamps, start=1) if i not in del_frame_index]            
             # print(f"Deleted missing frames : {del_frame_index}")
 
             if len(radar_adc) != len(radar_timestamps):
                 raise Exception("Different number of paths and timestamps after deleting missing frames.")
-            
+
             return radar_adc, radar_timestamps
         except Exception as e:
             print(f"Error: Failed to delete missing frames: {e}")
