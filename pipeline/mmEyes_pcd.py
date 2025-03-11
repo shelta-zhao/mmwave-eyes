@@ -77,50 +77,50 @@ class mmEyesPCD:
                 self.process_lidar_data(os.path.join(self.data_root, adc_data['prefix']))
                 print(f"Lidar data processed successfully: {adc_data['prefix']}")
 
-            # Perform data synchronization
-            synchronized_data = radarEyesLoader.data_sync(data_path)
+            # # Perform data synchronization
+            # synchronized_data = radarEyesLoader.data_sync(data_path)
             
-            # Check if the data is synchronized successfully
-            if len(synchronized_data['radar_azi']['paths']) == 0 or len(synchronized_data['lidar']['paths']) == 0:
-                print(f"Data synchronization failed. Please check the data : {adc_data['prefix']}.")
-                continue
+            # # Check if the data is synchronized successfully
+            # if len(synchronized_data['radar_azi']['paths']) == 0 or len(synchronized_data['lidar']['paths']) == 0:
+            #     print(f"Data synchronization failed. Please check the data : {adc_data['prefix']}.")
+            #     continue
 
-            # Perform mmEyes PCD pipeline for each frame
-            global_point_cloud, global_trajectory = [], []
-            radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']))
-            for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
+            # # Perform mmEyes PCD pipeline for each frame
+            # global_point_cloud, global_trajectory = [], []
+            # radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']))
+            # for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
 
-                # Load data of different sensors
-                timestamp = synchronized_data['radar_azi']['timestamps'][frame_idx]
-                radar_ele = self.get_radar_ele(synchronized_data['radar_ele']['timestamps'], timestamp, radar_ele_all)
-                radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
-                lidar = radarEyesLoader.load_data(synchronized_data['lidar']['paths'][frame_idx], sensor="lidar")
+            #     # Load data of different sensors
+            #     timestamp = synchronized_data['radar_azi']['timestamps'][frame_idx]
+            #     radar_ele = self.get_radar_ele(synchronized_data['radar_ele']['timestamps'], timestamp, radar_ele_all)
+            #     radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
+            #     lidar = radarEyesLoader.load_data(synchronized_data['lidar']['paths'][frame_idx], sensor="lidar")
 
-                # Perform Distributed Filter
+            #     # Perform Distributed Filter
 
 
-                # Perform Polar Back Projection
+            #     # Perform Polar Back Projection
 
-                # Perform Cooridnate Transformation
-                angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
-                angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
-                transformed_radar = self.transform_point_cloud(radar_azi, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
-                transformed_lidar = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
+            #     # Perform Cooridnate Transformation
+            #     angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
+            #     angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
+            #     transformed_radar = self.transform_point_cloud(radar_azi, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
+            #     transformed_lidar = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
                 
-                # Merge the global features
-                global_point_cloud.append(transformed_radar)
-                global_trajectory.append(position_radar)
+            #     # Merge the global features
+            #     global_point_cloud.append(transformed_radar)
+            #     global_trajectory.append(position_radar)
 
-                if frame_idx == 10:
-                    method_pcd = np.vstack(global_point_cloud)
-                    min_height = -1
-                    max_height = 3
-                    mask = (method_pcd[:, 2] >= min_height-1) & (method_pcd[:, 2] <= max_height+1)
-                    method_pcd = method_pcd[mask]
-                    method_pcd[:, 3] = method_pcd[:, 3] / np.max(method_pcd[:, 3])
-                    self.pcd_display(method_pcd)
-                    aaaa
-                pass
+            #     if frame_idx == 10:
+            #         method_pcd = np.vstack(global_point_cloud)
+            #         min_height = -1
+            #         max_height = 3
+            #         mask = (method_pcd[:, 2] >= min_height-1) & (method_pcd[:, 2] <= max_height+1)
+            #         method_pcd = method_pcd[mask]
+            #         method_pcd[:, 3] = method_pcd[:, 3] / np.max(method_pcd[:, 3])
+            #         self.pcd_display(method_pcd)
+            #         aaaa
+            #     pass
     
     def process_radar_ele_data(self, data_path):
         """
@@ -154,7 +154,7 @@ class mmEyesPCD:
 
         # Process each raw lidar data
         # for file_path in tqdm(glob.glob(os.path.join(src_folder, "*.bin")), desc="Processing lidar frames", ncols=90):
-        for file_path in glob.glob(os.path.join(src_folder, "*.bin"):
+        for file_path in glob.glob(os.path.join(src_folder, "*.bin")):
             # Process the raw lidar bin file
             lidarDataProcessor.save_lidar(file_path)
             

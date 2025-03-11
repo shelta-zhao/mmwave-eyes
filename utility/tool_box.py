@@ -9,10 +9,11 @@ import os
 import yaml
 import torch
 import argparse
+import math
 from itertools import count
 
 
-def adc_list_generate(data_path, output_file="adc_list.yaml"):
+def adc_list_generate(data_path, output_file="adc_list"):
     """
     Generate the list of data from the given data path.
 
@@ -36,10 +37,8 @@ def adc_list_generate(data_path, output_file="adc_list.yaml"):
         adc_list.append(entry)
     
     # Save the list to a YAML file
-    with open(output_file, "w", encoding="utf-8") as f:
+    with open(f"{output_file}.yaml", "w", encoding="utf-8") as f:
         yaml.dump(adc_list, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
-    print("ADC list generated successfully.")
 
 
 def split_yaml(input_file, output_path, num_files):
@@ -62,9 +61,10 @@ def split_yaml(input_file, output_path, num_files):
     batch_size = math.ceil(total_entries / num_files)
 
     # Split the data into batches
+    os.makedirs(f"{output_path}/adc_split", exist_ok=True)
     for i in range(0, len(data), batch_size):
         batch = data[i:i + batch_size]
-        output_file = f"{output_path}/{input_file}_{i//batch_size + 1}.yaml"
+        output_file = f"{output_path}/adc_split/adc_list_{i//batch_size + 1}.yaml"
         
         with open(output_file, 'w', encoding='utf-8') as f:
             yaml.dump(batch, f, allow_unicode=True, default_flow_style=False)
@@ -164,6 +164,8 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser(description='Convert radar data to PCD format.')
     parser.add_argument('--data_root', type=str, default="data/adc_data", help='Root path of dataset.')
+    parser.add_argument('--output_path', type=str, default="tmp", help='Path to save the output files.')
+    parser.add_argument('--process_num', type=int, default=1, help='Number of processes to run.')
     parser.add_argument('--yaml_path', type=str, default="adc_list", help='Path to the radar data file.')
     parser.add_argument('--pipeline', type=int, default=1, help='Processing pipeline to use.')
     parser.add_argument('--save', action='store_true', help='Whether to save the results to a file.')

@@ -18,32 +18,35 @@ from utility.tool_box import parse_arguments, adc_list_generate, split_yaml
 from pipeline.adc_to_pcd import adc_to_pcd
 from pipeline.mmEyes_pcd import mmEyesPCD
 
-def multi_process(process_num, output_path="tmp"):
+def multi_process(args):
     """
     Run multiple processes to process the radar data.
 
     Parameters:
-        process_num (int): The number of processes to run.
+        args (Namespace): The arguments from the command line
     """
 
     # Generate the list of data
-    os.makedirs(output_path, exist_ok=True)
-    adc_list_generate(data_root, output_file="adc_list.yaml")
-    split_yaml("adc_list", output_path, process_num)
+    os.makedirs(args.output_path, exist_ok=True)
+    adc_list_generate(args.data_root, output_file=f"{args.output_path}/adc_list")
+    split_yaml(f"{args.output_path}/adc_list", args.output_path, args.process_num)
 
-    # Create the list of commands to run
-    commands = [
-        ["python", "main.py", "--pipeline", "2", "--yaml_path", f"{output_path}/adc_list_{i+1}"]
-        for i in range(process_num)
-    ]
+    # Create mmEyesPCD instance for each process and run it in parallel
+    def process_task(i):
+        yaml_path = f"{args.output_path}/adc_split/adc_list_{i+1}"
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        mmEyes_pcd = mmEyesPCD(args.data_root, device)
+        mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
+        mmEyes_pcd.run(yaml_path, device, save=args.save, display=args.display)
 
     # Run the processes with progress bar
-    thread_map(lambda cmd: subprocess.Popen(cmd).wait(), commands, max_workers=process_num, desc="Processing", ncols=100)
+    thread_map(process_task, range(args.process_num), max_workers=args.process_num, desc="Processing", ncols=100)
 
     # Clean up the tmp folder after all processes are complete
-    shutil.rmtree(output_path)
+    # shutil.rmtree(args.output_path)
 
     print("All processes have finished.")
+
 
 if __name__ == "__main__":
     
@@ -60,6 +63,7 @@ if __name__ == "__main__":
     elif args.pipeline == 2:
         # Perform the mmEyes-PCD pipeline
         mmEyes_pcd = mmEyesPCD(args.data_root, device)
+        multi_process(args)
         mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
     else:
         print("Invalid pipeline option. Please choose 1 for the traditional pipeline.")

@@ -36,7 +36,7 @@ def get_radar_params(config_path, radar_type, save=False, load=False):
         try:
             with open(f"{config_path}/radar_params.yaml", "r") as file:
                 radar_params = yaml.safe_load(file)
-            print(f"Radar params have been loaded from {config_path}/radar_params.yaml.")
+            # print(f"Radar params have been loaded from {config_path}/radar_params.yaml.")
         except FileNotFoundError:
             raise FileNotFoundError(f"File not found: {config_path}/radar_params.yaml")
         except yaml.YAMLError as e:
