@@ -396,17 +396,6 @@ class BPProcessor:
         q2 = r2.as_quat()
 
         return q2
-
-    def peak_detect(self):
-        """
-        Perform Peak Detection on the input data.
-
-        Parameters:
-            bp_output (np.ndarray): The output data from Back Projection Algorithm.
-
-        Returns:
-            peak_output (np.ndarray): The output data after Peak Detection.
-        """
-        pass
+    
 
         
