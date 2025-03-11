@@ -107,7 +107,7 @@ class UdpDataProcessor:
         data_name = os.path.join(data_path, "1843_ele", "udpData.dat")
         udp_index, expected_seq_num, del_frame_index, fsize, num_frames = -1, 1, [], os.path.getsize(data_name), 0
         all_frames = np.empty((20000, self.udpObj['numAdcSamples'], self.udpObj['numLoopsIn1Frame'], self.udpObj['numRxChan'], self.udpObj['numChirpsIn1Loop']), dtype=np.complex64)
-        progress_bar = tqdm(total=fsize, desc="Processing UDP Packets", unit="packet", ncols=90)
+        # progress_bar = tqdm(total=fsize, desc="Processing UDP Packets", unit="packet", ncols=90)
 
         # Parse the UDP packets
         while True:
@@ -161,12 +161,12 @@ class UdpDataProcessor:
                     all_frames[num_frames] = frame_data
                     num_frames += 1
   
-            # Update the progress bar
-            progress_bar.n = udp_index
-            progress_bar.refresh()
+            # # Update the progress bar
+            # progress_bar.n = udp_index
+            # progress_bar.refresh()
         
         # Close the progress bar
-        progress_bar.close()
+        # progress_bar.close()
 
         # Return the parsed data & the missing frame index
         return all_frames[:num_frames], del_frame_index

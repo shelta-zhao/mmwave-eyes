@@ -62,7 +62,7 @@ class mmEyesPCD:
         for adc_data in adc_list:
             
             # Print the current data info
-            print(f"\nProcessing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")
+            # print(f"\nProcessing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")
 
             # Generate regular data & radar params
             data_path = os.path.join(self.data_root, f"{adc_data['prefix']}")
@@ -153,7 +153,8 @@ class mmEyesPCD:
         os.makedirs(pcd_folder, exist_ok=True)
 
         # Process each raw lidar data
-        for file_path in tqdm(glob.glob(os.path.join(src_folder, "*.bin")), desc="Processing lidar frames", ncols=90):
+        # for file_path in tqdm(glob.glob(os.path.join(src_folder, "*.bin")), desc="Processing lidar frames", ncols=90):
+        for file_path in glob.glob(os.path.join(src_folder, "*.bin"):
             # Process the raw lidar bin file
             lidarDataProcessor.save_lidar(file_path)
             

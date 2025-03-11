@@ -10,6 +10,7 @@ import sys
 import torch
 import shutil
 import subprocess
+from tqdm.contrib.concurrent import thread_map
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
@@ -30,17 +31,16 @@ def multi_process(process_num, output_path="tmp"):
     adc_list_generate(data_root, output_file="adc_list.yaml")
     split_yaml("adc_list", output_path, process_num)
 
-    # Run the processes
-    processes = []
-    for i in range(process_num):
-        p = subprocess.Popen(["python", "main.py", "--pipeline", "2", "--yaml_path", f"{output_path}/adc_list_{i+1}"])
-        processes.append(p)
+    # Create the list of commands to run
+    commands = [
+        ["python", "main.py", "--pipeline", "2", "--yaml_path", f"{output_path}/adc_list_{i+1}"]
+        for i in range(process_num)
+    ]
 
-    # Wait for all processes to finish
-    for p in processes:
-        p.wait()
+    # Run the processes with progress bar
+    thread_map(lambda cmd: subprocess.Popen(cmd).wait(), commands, max_workers=process_num, desc="Processing", ncols=100)
 
-    # Remove the temporary files
+    # Clean up the tmp folder after all processes are complete
     shutil.rmtree(output_path)
 
     print("All processes have finished.")
