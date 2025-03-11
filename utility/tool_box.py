@@ -42,6 +42,34 @@ def adc_list_generate(data_path, output_file="adc_list.yaml"):
     print("ADC list generated successfully.")
 
 
+def split_yaml(input_file, output_path, num_files):
+    """
+    Split a YAML file into multiple files based on the given file num.
+
+    Parameters:
+        input_file (str): The input YAML file to split.
+        output_path (str): The path to save the output files.
+        num_files (int): The number of files to split the data into.
+    """
+
+    with open(f"{input_file}.yaml", 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+
+    if not isinstance(data, list):
+        raise ValueError("YAML should contain a list of entries.")
+    
+    total_entries = len(data)
+    batch_size = math.ceil(total_entries / num_files)
+
+    # Split the data into batches
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        output_file = f"{output_path}/{input_file}_{i//batch_size + 1}.yaml"
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            yaml.dump(batch, f, allow_unicode=True, default_flow_style=False)
+
+
 def reshape_fortran(x, shape):
     """
     Reshape a tensor in a Fortran-style (column-major order) while maintaining PyTorch's row-major default.

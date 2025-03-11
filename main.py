@@ -8,13 +8,42 @@
 import os
 import sys
 import torch
+import shutil
+import subprocess
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from utility.tool_box import parse_arguments, adc_list_generate
+from utility.tool_box import parse_arguments, adc_list_generate, split_yaml
 from pipeline.adc_to_pcd import adc_to_pcd
 from pipeline.mmEyes_pcd import mmEyesPCD
 
+def multi_process(process_num, output_path="tmp"):
+    """
+    Run multiple processes to process the radar data.
+
+    Parameters:
+        process_num (int): The number of processes to run.
+    """
+
+    # Generate the list of data
+    os.makedirs(output_path, exist_ok=True)
+    adc_list_generate(data_root, output_file="adc_list.yaml")
+    split_yaml("adc_list", output_path, process_num)
+
+    # Run the processes
+    processes = []
+    for i in range(process_num):
+        p = subprocess.Popen(["python", "main.py", "--pipeline", "2", "--yaml_path", f"{output_path}/adc_list_{i+1}"])
+        processes.append(p)
+
+    # Wait for all processes to finish
+    for p in processes:
+        p.wait()
+
+    # Remove the temporary files
+    shutil.rmtree(output_path)
+
+    print("All processes have finished.")
 
 if __name__ == "__main__":
     
@@ -29,9 +58,6 @@ if __name__ == "__main__":
         # Traditional pipeline to generate PCD from raw radar data
         point_cloud_data = adc_to_pcd(args.yaml_path, device, save=args.save, display=args.display)
     elif args.pipeline == 2:
-        # Generate the list of data
-        adc_list_generate(args.data_root, output_file="adc_list.yaml")
-
         # Perform the mmEyes-PCD pipeline
         mmEyes_pcd = mmEyesPCD(args.data_root, device)
         mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
