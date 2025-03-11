@@ -37,12 +37,12 @@ class mmEyesPCD:
         self.config_path_azi = os.path.join("data/radar_config", "1843_azi")
         self.config_path_ele = os.path.join("data/radar_config", "1843_coherentEle")
 
-    def run(self, adc_list, device, save=False, display=False):
+    def run(self, yaml_path, device, save=False, display=False):
         """
         Perform mmEyes PCD Pipeline.
 
         Parameters:
-            adc_list (str): The list of ADC data to be processed.
+            yaml_path (str): The list of ADC data to be processed.
             device (str): The device to perform the computation on ('cpu' or 'cuda').
             save (bool): Whether to save the results to a file.
             display (bool): Whether to display the results.
@@ -52,14 +52,17 @@ class mmEyesPCD:
         """
 
         # Parse data config & Get radar params
-        with open(f"{adc_list}.yaml", "r") as file:
+        with open(f"{yaml_path}.yaml", "r") as file:
             adc_list = yaml.safe_load(file)
         
         # Process each data in the list
         radarEyesLoader = RadarEyesLoader()
         config_azi = get_radar_params(self.config_path_azi, "AWR1843Boost", load=True)
         config_ele = get_radar_params(self.config_path_ele, "AWR1843Boost", load=True)
-        for adc_data in adc_list:
+
+        # for adc_data in adc_list:
+        index = int(yaml_path.split("_")[-1])
+        for adc_data in tqdm(adc_list, desc="Processing adc datas", ncols=90, position=index):
             
             # Print the current data info
             # print(f"\nProcessing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")

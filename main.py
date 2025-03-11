@@ -9,8 +9,7 @@ import os
 import sys
 import torch
 import shutil
-import subprocess
-from tqdm.contrib.concurrent import thread_map
+from pathos.multiprocessing import ProcessingPool as Pool
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
@@ -32,15 +31,15 @@ def multi_process(args):
     split_yaml(f"{args.output_path}/adc_list", args.output_path, args.process_num)
 
     # Create mmEyesPCD instance for each process and run it in parallel
+    mmEyes_pcd = mmEyesPCD(args.data_root, device)
     def process_task(i):
         yaml_path = f"{args.output_path}/adc_split/adc_list_{i+1}"
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        mmEyes_pcd = mmEyesPCD(args.data_root, device)
-        mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
         mmEyes_pcd.run(yaml_path, device, save=args.save, display=args.display)
-
-    # Run the processes with progress bar
-    thread_map(process_task, range(args.process_num), max_workers=args.process_num, desc="Processing", ncols=100)
+        
+    # Use multiprocessing to run tasks
+    with Pool(processes=args.process_num) as pool:
+        pool.map(process_task, range(args.process_num))
 
     # Clean up the tmp folder after all processes are complete
     # shutil.rmtree(args.output_path)
@@ -62,9 +61,7 @@ if __name__ == "__main__":
         point_cloud_data = adc_to_pcd(args.yaml_path, device, save=args.save, display=args.display)
     elif args.pipeline == 2:
         # Perform the mmEyes-PCD pipeline
-        mmEyes_pcd = mmEyesPCD(args.data_root, device)
         multi_process(args)
-        mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
     else:
         print("Invalid pipeline option. Please choose 1 for the traditional pipeline.")
         sys.exit(1) 
