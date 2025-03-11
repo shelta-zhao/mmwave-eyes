@@ -37,6 +37,8 @@ class mmEyesPCD:
         self.config_path_azi = os.path.join("data/radar_config", "1843_azi")
         self.config_path_ele = os.path.join("data/radar_config", "1843_coherentEle")
 
+        self.slider_window = 50
+
     def run(self, yaml_path, device, save=False, display=False):
         """
         Perform mmEyes PCD Pipeline.
@@ -60,13 +62,17 @@ class mmEyesPCD:
         config_azi = get_radar_params(self.config_path_azi, "AWR1843Boost", load=True)
         config_ele = get_radar_params(self.config_path_ele, "AWR1843Boost", load=True)
 
+        # Create all module instances
+        bp_processor = BPProcessor(config_ele, device)
+
         # for adc_data in adc_list:
         # index = int(yaml_path.split("_")[-1])
         index = 1
-        for adc_data in tqdm(adc_list, desc=f"Processing adc datas {index:02d}", ncols=90, position=index):
+        # for adc_data in tqdm(adc_list, desc=f"Processing adc datas {index:02d}", ncols=90, position=index):
+        for adc_data in adc_list:
             
             # Print the current data info
-            print(f"\nProcessing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")
+            print(f"Processing data: {adc_data['prefix']} | Camera: {adc_data['camera']}")
 
             # Generate regular data & radar params
             data_path = os.path.join(self.data_root, f"{adc_data['prefix']}")
@@ -83,49 +89,56 @@ class mmEyesPCD:
 
             # Perform data synchronization
             synchronized_data = radarEyesLoader.data_sync(data_path)
-
+            radar_azi_sync, radar_ele_sync, lidar_sync = synchronized_data['radar_azi'], synchronized_data['radar_ele'], synchronized_data['lidar']
+            
             # Check if the data is synchronized successfully
-            if len(synchronized_data['radar_azi']['paths']) == 0 or len(synchronized_data['lidar']['paths']) == 0:
+            if len(radar_azi_sync['paths']) == 0 or len(radar_ele_sync['timestamps']) == 0 or len(lidar_sync['paths']) == 0:
                 print(f"Data synchronization failed. Please check the data : {adc_data['prefix']}.")
                 continue
 
             # Perform mmEyes PCD pipeline for each frame
             global_point_cloud, global_trajectory = [], []
-            radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']))
-            for frame_idx in tqdm(range(len(synchronized_data['radar_azi']['paths'])), desc="Processing frames", ncols=90):
+            radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']), sensor='radar_ele')[radar_ele_sync['paths']]
+            for frame_idx in tqdm(range(len(radar_azi_sync['paths'])), desc="Processing frames", ncols=90):
 
-                # Load data of different sensors
-                timestamp = synchronized_data['radar_azi']['timestamps'][frame_idx]
-                radar_ele = self.get_radar_ele(synchronized_data['radar_ele']['timestamps'], timestamp, radar_ele_all)
-                radar_azi = radarEyesLoader.load_data(synchronized_data['radar_azi']['paths'][frame_idx], sensor='radar_azi')
-                lidar = radarEyesLoader.load_data(synchronized_data['lidar']['paths'][frame_idx], sensor="lidar")
+                # Load data of different sensors                
+                radar_azi = radarEyesLoader.load_data(radar_azi_sync['paths'][frame_idx], sensor='radar_azi')
+                lidar_pcd = radarEyesLoader.load_data(lidar_sync['paths'][frame_idx], sensor="lidar")
 
                 # Perform Distributed Filter
+                global_trajectory.append(radar_azi_sync['positions'][frame_idx])
 
+                if frame_idx != 0 and (frame_idx + 1) % self.slider_window == 0:
 
-                # Perform Polar Back Projection
+                    # Perform Polar Back Projection
+                    start_timestamp, end_timestamp = radar_azi_sync['timestamps'][frame_idx - self.slider_window + 1], radar_azi_sync['timestamps'][frame_idx]
+                    radar_ele_datas, radar_ele_positions, radar_ele_angles, radar_ele_timestamps = self.get_radar_ele(start_timestamp, end_timestamp, radar_ele_sync, radar_ele_all)
+                    bp_output = bp_processor.run(radar_ele_datas, radar_ele_positions, radar_ele_angles, radar_ele_timestamps)
+                    print(bp_output.shape)
+                    aaa
+                    # Generate the global features
+                    pass
 
-
-                # Perform Cooridnate Transformation
-                angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
-                angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
-                transformed_radar = self.transform_point_cloud(radar_azi, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
-                transformed_lidar = self.transform_point_cloud(lidar, position, angle, transform_flag=("ZED" not in adc_data['camera']))
+                # # Perform Cooridnate Transformation
+                # angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
+                # angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
+                # transformed_radar = self.transform_point_cloud(radar_azi, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
+                # transformed_lidar = self.transform_point_cloud(lidar, position_lidar, angle_lidar, transform_flag=("ZED" not in adc_data['camera']))
                 
-                # Merge the global features
-                global_point_cloud.append(transformed_radar)
-                global_trajectory.append(position_radar)
+                # # Merge the global features
+                # global_point_cloud.append(transformed_radar)
+                # global_trajectory.append(position_radar)
 
-                if frame_idx == 10:
-                    method_pcd = np.vstack(global_point_cloud)
-                    min_height = -1
-                    max_height = 3
-                    mask = (method_pcd[:, 2] >= min_height-1) & (method_pcd[:, 2] <= max_height+1)
-                    method_pcd = method_pcd[mask]
-                    method_pcd[:, 3] = method_pcd[:, 3] / np.max(method_pcd[:, 3])
-                    self.pcd_display(method_pcd)
-                    aaaa
-                pass
+                # if frame_idx == 10:
+                #     method_pcd = np.vstack(global_point_cloud)
+                #     min_height = -1
+                #     max_height = 3
+                #     mask = (method_pcd[:, 2] >= min_height-1) & (method_pcd[:, 2] <= max_height+1)
+                #     method_pcd = method_pcd[mask]
+                #     method_pcd[:, 3] = method_pcd[:, 3] / np.max(method_pcd[:, 3])
+                #     self.pcd_display(method_pcd)
+                #     aaaa
+                # pass
     
     def process_radar_ele_data(self, data_path):
         """
@@ -174,30 +187,34 @@ class mmEyesPCD:
             print(f"Error processing lidar data: {data_path}")
             return
 
-    def get_radar_ele(self, timestamps, current_timestamp, radar_ele_all, sliding_window=None):
+    def get_radar_ele(self, start_timestamp, end_timestamp, radar_ele_sync, radar_ele_all):
         """
         Get the radar ele data based on the time stamp.
 
         Parameters:
-            timestamps (list): The list of timestamps.
-            current_timestamp (int): The time stamp to be searched.
+            start_timestamp (float): The start time stamp.
+            end_timestamp (float): The end time stamp.
+            radar_ele_sync (dict): The synchronized radar ele
             radar_ele_all (np.ndarray): The radar ele data.
-            sliding_window (int): The size of the sliding window.
 
         Returns:
-            radar_ele (np.ndarray): The radar ele data before current timestamp.
+            datas (np.ndarray): The radar ele data before current timestamp.
+            positions (np.ndarray): The radar ele positions before current timestamp.
+            angles (np.ndarray): The radar ele angles before current timestamp.
+            timestamps (np.ndarray): The radar ele timestamps before current timestamp.
         """
 
         # Get the index of the time stamp
-        idx = max(0, np.searchsorted(timestamps, current_timestamp, side='right'))
+        idx_left = max(0, np.searchsorted(radar_ele_sync['timestamps'], start_timestamp, side='left') - 1)
+        idx_right = max(0, np.searchsorted(radar_ele_sync['timestamps'], end_timestamp, side='right'))
 
         # Get the radar ele data
-        if sliding_window is not None:
-            radar_ele = radar_ele_all[max(0, idx - sliding_window):idx]
-        else:
-            radar_ele = radar_ele_all[:idx]
+        datas = radar_ele_all[idx_left:idx_right]
+        positions = radar_ele_sync['positions'][idx_left:idx_right]
+        angles = radar_ele_sync['angles'][idx_left:idx_right]
+        timestamps = radar_ele_sync['timestamps'][idx_left:idx_right]
 
-        return radar_ele
+        return datas, positions, angles, timestamps
 
     def transform_point_cloud(self, points, position, angle, transform_flag):
         """
@@ -237,7 +254,7 @@ class mmEyesPCD:
 
         return transformed_points
 
-    def trajectory_display(self, trajectory):
+    def trajectory_display(self, trajectory, BEV=False):
         """
         Display the trajectory.
 
@@ -245,7 +262,37 @@ class mmEyesPCD:
             trajectory (np.ndarray): The trajectory to be displayed.
         """
 
-        pass
+        # Extract X, Y, Z coordinates
+        x, y, z = trajectory[:, 0], trajectory[:, 1], trajectory[:, 2]
+
+        # Create 3D plot
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot the trajectory
+        ax.plot(x, y, z, color='b', label="Trajectory")
+
+        # Scatter plot for start and end points
+        ax.scatter(x[0], y[0], z[0], color='g', marker='o', s=100, label="Start")
+        ax.scatter(x[-1], y[-1], z[-1], color='r', marker='x', s=100, label="End")
+
+        # Add labels and title
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.set_ylim(-0.5, 4)
+        ax.set_zlim(-1, 3)
+        ax.set_title("3D Trajectory Visualization")
+        ax.legend()
+        
+        # Set the view angle
+        if BEV:
+            ax.view_init(elev=90, azim=-90)
+            ax.set_zticks([])
+
+        # Display the plot
+        plt.show()
+
 
     def pcd_display(self, point_cloud_data):
         """
@@ -273,11 +320,11 @@ class mmEyesPCD:
         # cbar.set_label('Velocity', rotation=270, labelpad=15)
         # scatter.set_clim(-3, 3)
 
-        # Set axis labels
+        # Add labels and title
         ax.set_xlabel('X (meters)')
         ax.set_ylabel('Y (meters)')
         ax.set_zlabel('Z (meters)')
-
-        # Set title and show
         ax.set_title('3D Point Cloud')
+
+        # Display the plot
         plt.show()
