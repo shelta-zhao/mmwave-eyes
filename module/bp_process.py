@@ -108,8 +108,8 @@ class BPProcessor:
             distances_TXs, distances_RXs, radar_position = self.cal_distance(grid, position)
 
             # Loop over all the mimo data in the current frame
-            for rx_idx in range(1):#datas.shape[2]):
-                for tx_idx in range(1):#datas.shape[3]):
+            for rx_idx in range(datas.shape[2]):
+                for tx_idx in range(datas.shape[3]):
                     
                     # Extract the chirp data and distances for current mimo data
                     frame_data = datas[frame_idx, :, rx_idx, tx_idx]
@@ -122,6 +122,7 @@ class BPProcessor:
                     grid_idx_frac = (grid_idx_real - grid_idx_lower).to(torch.float64) 
                     # Perform the FOV Mask
                     if fov_mask:
+                        POLAR_valid_index = self.polar_mask(grid, radar_position, angle, grid_idx_upper, heatmap_vec / cntmap_vec, threshold=0.25)
                         FOV_valid_index = self.fov_mask(grid, radar_position, angle, grid_idx_upper)
                     else:
                         FOV_valid_index = torch.ones_like(grid_idx_upper, dtype=torch.bool)
@@ -143,9 +144,6 @@ class BPProcessor:
                     # Accumulate the contributions to the radar heatmap
                     heatmap_vec[FOV_valid_index] += frame_contributions
                     cntmap_vec[FOV_valid_index] += 1
-
-                    # Update the Polar Mask
-
 
         # Return the output data from Back Projection Algorithm
         heatmap_avg = heatmap / cntmap
@@ -356,7 +354,9 @@ class BPProcessor:
         r = torch.norm(voxels_transformed, dim=0)
         angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 /torch.pi
         angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / torch.pi
-
+        print(angle_azi.shape)
+        print(angle_ele.shape)
+        aaaa
         # Calculate the Polar Mask
         polar_mask = torch.unique(angle_ele[avg_heatmap > threshold])
 

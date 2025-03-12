@@ -66,9 +66,9 @@ if __name__ == "__main__":
         point_cloud_data = adc_to_pcd(args.yaml_path, device, save=args.save, display=args.display)
     elif args.pipeline == 2:
         # Perform the mmEyes-PCD pipeline
-        # mmEyes_pcd = mmEyesPCD(args.data_root, device)
-        # mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
-        multi_process(args)
+        mmEyes_pcd = mmEyesPCD(args.data_root, device)
+        mmEyes_pcd.run(args.yaml_path, device, save=args.save, display=args.display)
+        # multi_process(args)
     else:
         print("Invalid pipeline option. Please choose 1 for the traditional pipeline.")
         sys.exit(1) 
