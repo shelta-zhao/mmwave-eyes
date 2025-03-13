@@ -47,9 +47,9 @@ class BPProcessor:
         
         # Set default parameters for radar hetamap
         self.default = {
-            'x_min': -3, 'x_max': 3, 'x_bins': 2000,
-            'y_min': 0.4, 'y_max': 4.4, 'y_bins': 1000,
-            'z_min': 0, 'z_max': 0.001, 'z_bins': 1
+            'x_min': -3, 'x_max': 3, 'x_bins': 2000, 'x_resolution': (3 - (-3)) / 2000,
+            'y_min': 0.4, 'y_max': 4.4, 'y_bins': 1000, 'y_resolution': (4.4 - 0.4) / 1000,
+            'z_min': 0, 'z_max': 0.001, 'z_bins': 1, 'z_resolution': (0.001 - 0) / 1
         }
 
     def run(self, datas, positions, angles, timestamps):
@@ -75,10 +75,13 @@ class BPProcessor:
         rangefft_out = self.fft_processor.range_fft(datas).squeeze()
 
         # Perform Back Projection Algorithm
-        bp_output = self.back_projection(rangefft_out, positions, angles, fov_mask=False)
-        
+        bp_output = self.back_projection(rangefft_out, positions, angles, fov_mask=True)
+
+        # Perform Peak Detection
+        # bp_output = self.adaptive_peak_detect(torch.abs(bp_output), window_size=3, quantile=0.5)
+
         # Return the output data from Back Projection Algorithm
-        return bp_output
+        return np.log10(1 + np.abs(bp_output))
     
     def back_projection(self, datas, positions, angles, fov_mask=True):
         """
@@ -102,7 +105,7 @@ class BPProcessor:
 
         # Perform Back Projection Algorithm
         for frame_idx in range(datas.shape[0]):
-            
+
             # Extract the position and angle for current frame
             position, angle = positions[frame_idx], angles[frame_idx]
             distances_TXs, distances_RXs, radar_position = self.cal_distance(grid, position)
@@ -120,10 +123,11 @@ class BPProcessor:
                     grid_idx_lower = grid_idx_real.floor().to(torch.int64)
                     grid_idx_upper = grid_idx_real.ceil().to(torch.int64)
                     grid_idx_frac = (grid_idx_real - grid_idx_lower).to(torch.float64) 
+
                     # Perform the FOV Mask
                     if fov_mask:
-                        POLAR_valid_index = self.polar_mask(grid, radar_position, angle, grid_idx_upper, heatmap_vec / cntmap_vec, threshold=0.25)
-                        FOV_valid_index = self.fov_mask(grid, radar_position, angle, grid_idx_upper)
+                        FOV_valid_index = self.polar_mask(grid, radar_position, angle, grid_idx_upper, heatmap_vec / cntmap_vec, threshold=0.3)
+                        # FOV_valid_index = self.fov_mask(grid, radar_position, angle, grid_idx_upper)
                     else:
                         FOV_valid_index = torch.ones_like(grid_idx_upper, dtype=torch.bool)
 
@@ -257,36 +261,6 @@ class BPProcessor:
         # Return the distance
         return distances_TXs, distances_RXs, chirp_tx_positions[0]
 
-    def bp_display(self, heatmap):
-        """
-        Display the Back Projection Algorithm results.
-
-        Parameters:
-            heatmap (np.ndarray): The output data from Back Projection Algorithm.
-        """
-
-        # Convert to np.ndarray if the input is a tensor
-        if isinstance(heatmap, torch.Tensor):
-            heatmap = heatmap.cpu().numpy()
-
-        # Create the mesh grid
-        x = np.arange(0, heatmap.shape[0])
-        y = np.arange(0, heatmap.shape[1])
-        X, Y = np.meshgrid(y, x)
-
-        # Display the 3D mesh of back projection heatmap
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(X, Y, heatmap, cmap='viridis')
-
-        # Set the title and labels
-        ax.set_title("3D Mesh of Back Projection Heatmap")
-        ax.set_xlabel("X axis")
-        ax.set_ylabel("Y axis")
-        ax.set_zlabel("Back Projection Heatmap")
-
-        plt.show()
-
     def fov_mask(self, grid, position, angle, range_index):
         """
         Perform Field of View (FOV) Mask on the input data.
@@ -327,61 +301,62 @@ class BPProcessor:
         return FOV_valid_index
     
     def polar_mask(self, grid, position, angle, range_index, heatmap_vec, threshold=0.25):
-            
-            """
-            Perform Polar Mask on the input data.
+        
+        """
+        Perform Polar Mask on the input data.
 
-            Parameters:
-                grid (np.ndarray): The heatmap grid.
-                position (np.ndarray): The position of the radar.
-                angle (np.ndarray): The angle of the radar.
-                range_index (np.ndarray): The range index of the radar.
-                avg_heatmap (np.ndarray): The average heatmap of the radar.
-                threshold (float): The threshold to perform Polar Mask.
+        Parameters:
+            grid (np.ndarray): The heatmap grid.
+            position (np.ndarray): The position of the radar.
+            angle (np.ndarray): The angle of the radar.
+            range_index (np.ndarray): The range index of the radar.
+            heatmap_vec (np.ndarray): The average heatmap of the radar.
+            threshold (float): The threshold to perform Polar Mask.
 
-            Returns:
-                polar mask (np.ndarray): The output data after Polar Mask.
-            """
+        Returns:
+            polar mask (np.ndarray): The output data after Polar Mask.
+        """
 
-            xx, yy, zz = grid[:, :, :, 0], grid[:, :, :, 1], grid[:, :, :, 2]
-            angle_coverted = self.convert_quaternion(angle.cpu().numpy())
-            rotation_matrix = torch.tensor(R.from_quat(angle_coverted).as_matrix(), device=self.device, dtype=torch.float32)
+        xx, yy, zz = grid[:, :, :, 0], grid[:, :, :, 1], grid[:, :, :, 2]
+        angle_coverted = self.convert_quaternion(angle.cpu().numpy())
+        rotation_matrix = torch.tensor(R.from_quat(angle_coverted).as_matrix(), device=self.device, dtype=torch.float32)
 
-            voxels = torch.stack([xx.flatten(), yy.flatten(), zz.flatten()])
-            range_idxs_vec = range_index.flatten()
-            voxels_transformed = rotation_matrix.T.matmul(voxels - position.reshape(3, 1))
+        voxels = torch.stack([xx.flatten(), yy.flatten(), zz.flatten()])
+        range_idxs_vec = range_index.flatten()
+        voxels_transformed = rotation_matrix.T.matmul(voxels - position.reshape(3, 1))
 
-            r = torch.norm(voxels_transformed, dim=0)
-            angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 /torch.pi
-            angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / torch.pi
+        r = torch.norm(voxels_transformed, dim=0)
+        angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 /torch.pi
+        angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / torch.pi
 
-            POLAR_valid_index = reduce(
-                torch.logical_and, (
-                    angle_azi >= self.BPObj['FOV_azi'][0], 
-                    angle_azi <= self.BPObj['FOV_azi'][1],
-                    angle_ele >= self.BPObj['FOV_ele'][0],
-                    angle_ele <= self.BPObj['FOV_ele'][1],
-                    range_idxs_vec < self.BPObj['rangeFFTSize']
-                )
+        POLAR_valid_index = reduce(
+            torch.logical_and, (
+                angle_azi >= self.BPObj['FOV_azi'][0], 
+                angle_azi <= self.BPObj['FOV_azi'][1],
+                angle_ele >= self.BPObj['FOV_ele'][0],
+                angle_ele <= self.BPObj['FOV_ele'][1],
+                range_idxs_vec < self.BPObj['rangeFFTSize']
             )
+        )
 
-            # # Calculate the Polar Mask
-            heatmap_vec = torch.log10(1 + torch.abs(heatmap_vec / torch.max(torch.abs(heatmap_vec))))
-            valid_mask = heatmap_vec > threshold
-            
-            if torch.any(valid_mask):
+        # # Calculate the Polar Mask
+        # heatmap_vec = torch.log10(1 + heatmap_vec / torch.max(heatmap_vec))
+        heatmap_vec = torch.log10(1 + torch.abs(heatmap_vec / torch.max(torch.abs(heatmap_vec))))
+        valid_mask = heatmap_vec > threshold
+        
+        if torch.any(valid_mask):
 
-                angle_azi_rounded = torch.round(angle_azi)
-                angle_min, angle_max = angle_azi_rounded.min().long(), angle_azi_rounded.max().long()
-                angle_indices = (angle_azi_rounded[valid_mask] - angle_min).long()
+            angle_azi_rounded = torch.round(angle_azi)
+            angle_min, angle_max = angle_azi_rounded.min().long(), angle_azi_rounded.max().long()
+            angle_indices = (angle_azi_rounded[valid_mask] - angle_min).long()
 
-                min_ranges = torch.full((angle_max - angle_min + 1,), float('inf'), device=self.device)
-                min_ranges.scatter_reduce_(0, angle_indices, range_idxs_vec[valid_mask].float(), reduce='amin')
+            min_ranges = torch.full((angle_max - angle_min + 1,), float('inf'), device=self.device)
+            min_ranges.scatter_reduce_(0, angle_indices, range_idxs_vec[valid_mask].float(), reduce='amin')
 
-                angle_min_range = min_ranges[(angle_azi_rounded - angle_min).long()]
-                POLAR_valid_index &= ~(range_idxs_vec > angle_min_range)       
+            angle_min_range = min_ranges[(angle_azi_rounded - angle_min).long()]
+            POLAR_valid_index &= ~(range_idxs_vec > angle_min_range)       
 
-            return POLAR_valid_index
+        return POLAR_valid_index
 
     def convert_quaternion(self,q1):
         """
@@ -407,5 +382,57 @@ class BPProcessor:
 
         return q2
     
-
+    def bp_to_pcd(self, bp_output, threshold=0.1):
+        """
+        Convert the Back Projection output to Point Cloud Data.
         
+        Parameters:
+            bp_output (np.ndarray): The output data from Back Projection Algorithm.
+            threshold (float): The threshold to perform Point Cloud Data conversion.
+
+        Returns:
+            global_point_cloud (np.ndarray): The Point Cloud Data.
+        """
+
+        x_resolution, y_resolution, z_resolution = self.default['x_resolution'], self.default['y_resolution'], self.default['z_resolution']
+        x_min, y_min, z_min = self.default['x_min'], self.default['y_min'], self.default['z_min']
+
+        valid_indices = np.argwhere(bp_output > 0)
+        x_indices, y_indices, z_indices = valid_indices[:, 0], valid_indices[:, 1], valid_indices[:, 2]
+        global_point_cloud = np.vstack((x_indices, y_indices, z_indices)).T
+
+        global_point_cloud = global_point_cloud * np.array([x_resolution, y_resolution, z_resolution]) + np.array([x_min, y_min, z_min])
+
+        voxel_values = bp_output[x_indices, y_indices, z_indices]
+        global_point_cloud = np.hstack((global_point_cloud, voxel_values.reshape(-1, 1)))
+        global_point_cloud = global_point_cloud[global_point_cloud[:, 3] > threshold]
+        return global_point_cloud
+
+    def bp_display(self, heatmap):
+        """
+        Display the Back Projection Algorithm results.
+
+        Parameters:
+            heatmap (np.ndarray): The output data from Back Projection Algorithm.
+        """
+
+        # Convert to np.ndarray if the input is a tensor
+        if isinstance(heatmap, torch.Tensor):
+            heatmap = heatmap.cpu().numpy()
+
+        # Create the mesh grid
+        x = np.arange(0, heatmap.shape[0])
+        y = np.arange(0, heatmap.shape[1])
+        X, Y = np.meshgrid(y, x)
+
+        # Display the 3D mesh of back projection heatmap
+        fig, ax = plt.subplots(figsize=(10, 8))
+        c = ax.pcolormesh(X, Y, np.abs(heatmap.squeeze()), cmap='viridis', shading='auto')
+
+        # Set the title and labels
+        ax.set_title("2D Mesh of Back Projection Heatmap")
+        ax.set_xlabel("X axis")
+        ax.set_ylabel("Y axis")
+        plt.colorbar(c, ax=ax, label="Intensity")
+
+        plt.show()
