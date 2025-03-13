@@ -1,8 +1,8 @@
-- prefix: '2023_06_30_20_13_01'
+- prefix: '2023_06_04_22_48_54_A409_hall_4_50s'
   camera: ZED
   config: 1843_azi & 1843_coherentEle
   radar: AWR1843Boost
-- prefix: '2023_06_04_22_48_54_A409_hall_4_50s'
+- prefix: '2023_06_30_20_13_01'
   camera: ZED
   config: 1843_azi & 1843_coherentEle
   radar: AWR1843Boost
