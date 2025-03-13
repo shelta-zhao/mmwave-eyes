@@ -152,7 +152,7 @@ class BPProcessor:
         # Return the output data from Back Projection Algorithm
         heatmap_avg = heatmap / cntmap
         heatmap_norm = heatmap_avg / torch.max(torch.abs(heatmap_avg))
-        return heatmap_norm.cpu().numpy()
+        return heatmap_norm.cpu().numpy().squeeze()
 
 
     def init_grid(self, params=None):

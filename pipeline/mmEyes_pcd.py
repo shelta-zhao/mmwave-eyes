@@ -25,6 +25,7 @@ from module.fft_process import FFTProcessor
 from module.cfar_process import CFARProcessor
 from module.doa_process import DOAProcessor
 from module.bp_process import BPProcessor
+from module.df_process import DFProcessor
 
 
 class mmEyesPCD:
@@ -64,6 +65,7 @@ class mmEyesPCD:
 
         # Create all module instances
         bp_processor = BPProcessor(config_ele, device)
+        df_processor = DFProcessor(device)
 
         # for adc_data in adc_list:
         # index = int(yaml_path.split("_")[-1])
@@ -97,7 +99,7 @@ class mmEyesPCD:
                 continue
 
             # Perform mmEyes PCD pipeline for each frame
-            global_point_cloud, global_trajectory = [], []
+            global_radar_pcd, global_lidar_pcd, global_trajectory = [], [], []
             radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']), sensor='radar_ele')[radar_ele_sync['paths']]
             for frame_idx in tqdm(range(len(radar_azi_sync['paths'])), desc="Processing frames", ncols=90):
 
@@ -106,9 +108,16 @@ class mmEyesPCD:
                 lidar_pcd = radarEyesLoader.load_data(lidar_sync['paths'][frame_idx], sensor="lidar")
 
                 # Perform Distributed Filter
-                global_trajectory.append(radar_azi_sync['positions'][frame_idx])
-
+                radar_azi_pcd = df_processor.run(radar_azi, config_azi)
+              
                 if frame_idx != 0 and (frame_idx + 1) % self.slider_window == 0:
+                    
+                    print(np.vstack(global_radar_pcd).shape)
+                    print(np.vstack(global_lidar_pcd).shape)
+                    self.pcd_display(np.vstack(global_radar_pcd))
+                    self.pcd_display(np.vstack(global_lidar_pcd))
+                    self.trajectory_display(np.vstack(global_trajectory))
+                    aaaaa
 
                     # Perform Polar Back Projection
                     start_timestamp, end_timestamp = radar_azi_sync['timestamps'][frame_idx - self.slider_window + 1], radar_azi_sync['timestamps'][frame_idx]
@@ -118,27 +127,22 @@ class mmEyesPCD:
                     aaa
                     # Generate the global features
                     pass
-
-                # # Perform Cooridnate Transformation
-                # angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
-                # angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
-                # transformed_radar = self.transform_point_cloud(radar_azi, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
-                # transformed_lidar = self.transform_point_cloud(lidar, position_lidar, angle_lidar, transform_flag=("ZED" not in adc_data['camera']))
                 
-                # # Merge the global features
-                # global_point_cloud.append(transformed_radar)
-                # global_trajectory.append(position_radar)
+                # Perfrom PCD Filtering
+                radar_azi_pcd = self.pcd_filter(radar_azi_pcd)
+                lidar_pcd = self.pcd_filter(lidar_pcd)
 
-                # if frame_idx == 10:
-                #     method_pcd = np.vstack(global_point_cloud)
-                #     min_height = -1
-                #     max_height = 3
-                #     mask = (method_pcd[:, 2] >= min_height-1) & (method_pcd[:, 2] <= max_height+1)
-                #     method_pcd = method_pcd[mask]
-                #     method_pcd[:, 3] = method_pcd[:, 3] / np.max(method_pcd[:, 3])
-                #     self.pcd_display(method_pcd)
-                #     aaaa
-                # pass
+                # Perform Cooridnate Transformation
+                angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
+                angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
+                transformed_radar = self.transform_point_cloud(radar_azi_pcd, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
+                transformed_lidar = self.transform_point_cloud(lidar_pcd, position_lidar, angle_lidar, transform_flag=("ZED" not in adc_data['camera']))
+                
+                # Merge the global features
+                global_trajectory.append(radar_azi_sync['positions'][frame_idx])
+                global_radar_pcd.append(transformed_radar)
+                global_lidar_pcd.append(transformed_lidar)
+
     
     def process_radar_ele_data(self, data_path):
         """
@@ -254,6 +258,24 @@ class mmEyesPCD:
 
         return transformed_points
 
+    def pcd_filter(self, point_cloud_data):
+        """
+        Physically filter the point cloud data.
+
+        Parameters:
+            point_cloud_data (np.ndarray): The point cloud data to be filtered. 
+        
+        Returns:
+            filtered_point_cloud (np.ndarray): The filtered point cloud data.
+        """
+
+        # Filter the position
+        mask = (point_cloud_data[:, 0] >= -3) & (point_cloud_data[:, 0] <= 3) & (point_cloud_data[:, 1] >= 0.4) & (point_cloud_data[:, 1] <= 4) & (point_cloud_data[:, 2] >= -1) & (point_cloud_data[:, 2] <= 3)
+        filtered_point_cloud = point_cloud_data[mask]
+
+        # Return the filtered point cloud
+        return filtered_point_cloud
+
     def trajectory_display(self, trajectory, BEV=False):
         """
         Display the trajectory.
@@ -292,7 +314,6 @@ class mmEyesPCD:
 
         # Display the plot
         plt.show()
-
 
     def pcd_display(self, point_cloud_data):
         """
