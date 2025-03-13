@@ -52,17 +52,18 @@ class DOAProcessor:
             denoise (bool): Whether to remove noise from the DOA estimation results.
 
         Returns:
-            point cloud data (np.ndarray): The DOA estimation results.
-            1. frameIdx: Frame index
-            2. objectIdx: Object index
-            3. x: X coordinate
-            4. y: Y coordinate
-            5. z: Z coordinate
-            6. distance: Distance
-            7. velocity: Velocity
-            8. azimuth: Azimuth angle
-            9. elevation: Elevation angle
-            10. signalPower: Signal power
+            point cloud data (np.ndarray): The DOA estimation results. 
+            1. x: X coordinate
+            2. y: Y coordinate
+            3. z: Z coordinate
+            4. signalPower: Signal power
+            5. frameIdx: Frame index
+            6. objectIdx: Object index
+            7. distance: Distance
+            8. velocity: Velocity
+            9. azimuth: Azimuth angle
+            10. elevation: Elevation angle
+
             11. noise_var: Noise variance
             12. estSNR: Estimated SNR
             13. rangeInd: Range index
@@ -116,17 +117,17 @@ class DOAProcessor:
             point_cloud_data[iobj, 0] = result['range'] * np.sin(azimuth) * np.cos(elevation) # X
             point_cloud_data[iobj, 1] = result['range'] * np.cos(azimuth) * np.cos(elevation) # Y
             point_cloud_data[iobj, 2] = result['range'] * np.sin(elevation)                   # Z
-            point_cloud_data[iobj, 3] = result['frameIdx']                                    # Frame index
-            point_cloud_data[iobj, 4] = iobj + 1                                              # Object index (start from 1)
+            point_cloud_data[iobj, 3] = result['signalPower']                                 # Signal power
+            point_cloud_data[iobj, 4] = result['frameIdx']                                    # Frame index
+            point_cloud_data[iobj, 5] = iobj + 1                                              # Object index (start from 1)
 
             # Distance, velocity, azimuth, elevation
-            point_cloud_data[iobj, 5] = result['range']
-            point_cloud_data[iobj, 6] = result['doppler']
-            point_cloud_data[iobj, 7] = result['angles'][0]                                   # Azimuth
-            point_cloud_data[iobj, 8] = result['angles'][1]                                   # Elevation
+            point_cloud_data[iobj, 6] = result['range']
+            point_cloud_data[iobj, 7] = result['doppler']
+            point_cloud_data[iobj, 8] = result['angles'][0]                                   # Azimuth
+            point_cloud_data[iobj, 9] = result['angles'][1]                                   # Elevation
 
             # Noise, SNR
-            point_cloud_data[iobj, 9] = result['signalPower']
             point_cloud_data[iobj, 10] = result['noise_var']
             point_cloud_data[iobj, 11] = result['estSNR']
 
