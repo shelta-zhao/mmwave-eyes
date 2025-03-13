@@ -326,52 +326,62 @@ class BPProcessor:
         # return FOV_valid_index.reshape(grid.shape[:3])
         return FOV_valid_index
     
-    def polar_mask(self, grid, position, angle, range_index, avg_heatmap, threshold=0.25):
-        
-        """
-        Perform Polar Mask on the input data.
+    def polar_mask(self, grid, position, angle, range_index, heatmap_vec, threshold=0.25):
+            
+            """
+            Perform Polar Mask on the input data.
 
-        Parameters:
-            grid (np.ndarray): The heatmap grid.
-            position (np.ndarray): The position of the radar.
-            angle (np.ndarray): The angle of the radar.
-            range_index (np.ndarray): The range index of the radar.
-            avg_heatmap (np.ndarray): The average heatmap of the radar.
-            threshold (float): The threshold to perform Polar Mask.
+            Parameters:
+                grid (np.ndarray): The heatmap grid.
+                position (np.ndarray): The position of the radar.
+                angle (np.ndarray): The angle of the radar.
+                range_index (np.ndarray): The range index of the radar.
+                avg_heatmap (np.ndarray): The average heatmap of the radar.
+                threshold (float): The threshold to perform Polar Mask.
 
-        Returns:
-            polar mask (np.ndarray): The output data after Polar Mask.
-        """
+            Returns:
+                polar mask (np.ndarray): The output data after Polar Mask.
+            """
 
-        xx, yy, zz = grid[:, :, :, 0], grid[:, :, :, 1], grid[:, :, :, 2]
-        angle_coverted = self.convert_quaternion(angle.cpu().numpy())
-        rotation_matrix = torch.tensor(R.from_quat(angle_coverted).as_matrix(), device=self.device, dtype=torch.float32)
+            xx, yy, zz = grid[:, :, :, 0], grid[:, :, :, 1], grid[:, :, :, 2]
+            angle_coverted = self.convert_quaternion(angle.cpu().numpy())
+            rotation_matrix = torch.tensor(R.from_quat(angle_coverted).as_matrix(), device=self.device, dtype=torch.float32)
 
-        voxels = torch.stack([xx.flatten(), yy.flatten(), zz.flatten()])
-        range_idxs_vec = range_index.flatten()
-        voxels_transformed = rotation_matrix.T.matmul(voxels - position.reshape(3, 1))
+            voxels = torch.stack([xx.flatten(), yy.flatten(), zz.flatten()])
+            range_idxs_vec = range_index.flatten()
+            voxels_transformed = rotation_matrix.T.matmul(voxels - position.reshape(3, 1))
 
-        r = torch.norm(voxels_transformed, dim=0)
-        angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 /torch.pi
-        angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / torch.pi
-        print(angle_azi.shape)
-        print(angle_ele.shape)
-        aaaa
-        # Calculate the Polar Mask
-        polar_mask = torch.unique(angle_ele[avg_heatmap > threshold])
+            r = torch.norm(voxels_transformed, dim=0)
+            angle_azi = torch.atan2(voxels_transformed[0], voxels_transformed[1]) * 180 /torch.pi
+            angle_ele = torch.asin(voxels_transformed[2] / r) * 180 / torch.pi
 
-        POLAR_valid_index = reduce(
-            torch.logical_and, (
-                angle_azi >= self.BPObj['FOV_azi'][0], 
-                angle_azi <= self.BPObj['FOV_azi'][1],
-                angle_ele >= self.BPObj['FOV_ele'][0],
-                angle_ele <= self.BPObj['FOV_ele'][1],
-                range_idxs_vec < self.BPObj['rangeFFTSize'],
-                ~torch.isin(angle_ele, polar_mask)
+            POLAR_valid_index = reduce(
+                torch.logical_and, (
+                    angle_azi >= self.BPObj['FOV_azi'][0], 
+                    angle_azi <= self.BPObj['FOV_azi'][1],
+                    angle_ele >= self.BPObj['FOV_ele'][0],
+                    angle_ele <= self.BPObj['FOV_ele'][1],
+                    range_idxs_vec < self.BPObj['rangeFFTSize']
+                )
             )
-        )
-        
-        return POLAR_valid_index
+
+            # # Calculate the Polar Mask
+            heatmap_vec = torch.log10(1 + torch.abs(heatmap_vec / torch.max(torch.abs(heatmap_vec))))
+            valid_mask = heatmap_vec > threshold
+            
+            if torch.any(valid_mask):
+
+                angle_azi_rounded = torch.round(angle_azi)
+                angle_min, angle_max = angle_azi_rounded.min().long(), angle_azi_rounded.max().long()
+                angle_indices = (angle_azi_rounded[valid_mask] - angle_min).long()
+
+                min_ranges = torch.full((angle_max - angle_min + 1,), float('inf'), device=self.device)
+                min_ranges.scatter_reduce_(0, angle_indices, range_idxs_vec[valid_mask].float(), reduce='amin')
+
+                angle_min_range = min_ranges[(angle_azi_rounded - angle_min).long()]
+                POLAR_valid_index &= ~(range_idxs_vec > angle_min_range)       
+
+            return POLAR_valid_index
 
     def convert_quaternion(self,q1):
         """
