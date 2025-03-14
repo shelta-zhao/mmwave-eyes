@@ -46,6 +46,7 @@ class BPProcessor:
         }
         
         # Set default parameters for radar hetamap
+        self.angles = torch.arange(-90, 90, 0.05).to(device)
         self.default = {
             'x_min': -3, 'x_max': 3, 'x_bins': 2000, 'x_resolution': (3 - (-3)) / 2000,
             'y_min': 0.4, 'y_max': 4.4, 'y_bins': 1000, 'y_resolution': (4.4 - 0.4) / 1000,
@@ -72,17 +73,20 @@ class BPProcessor:
         angles = torch.tensor(angles, dtype=torch.float, device=self.device)
 
         # Perform Range FFT
-        rangefft_out = self.fft_processor.range_fft(datas).squeeze()
-
+        rangefft_out = self.fft_processor.range_fft(datas)
+    
         # Perform Back Projection Algorithm
         bp_output = self.back_projection(rangefft_out, positions, angles, fov_mask=True)
 
         # Perform Peak Detection
         # bp_output = self.adaptive_peak_detect(torch.abs(bp_output), window_size=3, quantile=0.5)
-
+        tmp = bp_output.reshape((2000, 1000))
+        
+        aaaa
         # Return the output data from Back Projection Algorithm
         return np.log10(1 + np.abs(bp_output))
     
+
     def back_projection(self, datas, positions, angles, fov_mask=True):
         """
         Perform Back Projection Algorithm on the input data, GPU is needed to accelerate.
@@ -109,13 +113,14 @@ class BPProcessor:
             # Extract the position and angle for current frame
             position, angle = positions[frame_idx], angles[frame_idx]
             distances_TXs, distances_RXs, radar_position = self.cal_distance(grid, position)
+            bf_weight = self.beamforming_mask(datas[frame_idx])
 
             # Loop over all the mimo data in the current frame
-            for rx_idx in range(datas.shape[2]):
-                for tx_idx in range(datas.shape[3]):
+            for rx_idx in range(datas.shape[3]):
+                for tx_idx in range(datas.shape[4]):
                     
                     # Extract the chirp data and distances for current mimo data
-                    frame_data = datas[frame_idx, :, rx_idx, tx_idx]
+                    frame_data = datas[frame_idx, :, 0, rx_idx, tx_idx]
                     distances = ((distances_TXs[tx_idx] + distances_RXs[rx_idx]) / 2).view(-1)
                     
                     # Calculate the grid index for the distances
@@ -126,19 +131,20 @@ class BPProcessor:
 
                     # Perform the FOV Mask
                     if fov_mask:
-                        FOV_valid_index = self.polar_mask(grid, radar_position, angle, grid_idx_upper, heatmap_vec / cntmap_vec, threshold=0.3)
+                        FOV_valid_index, bf_mask = self.polar_mask(grid, radar_position, angle, grid_idx_upper, heatmap_vec / cntmap_vec, bf_weight, threshold=0.25)
                         # FOV_valid_index = self.fov_mask(grid, radar_position, angle, grid_idx_upper)
                     else:
                         FOV_valid_index = torch.ones_like(grid_idx_upper, dtype=torch.bool)
+                        bf_mask = torch.ones_like(grid_idx_upper, dtype=torch.float)
 
                     # Calculate the frame contributions to the radar heatmap
                     frame_data_upper = torch.gather(frame_data, 0, grid_idx_upper[FOV_valid_index])
                     frame_data_lower = torch.gather(frame_data, 0, grid_idx_lower[FOV_valid_index])
                     frame_data_interp = torch.polar(
-                        torch.lerp(torch.abs(frame_data_lower), torch.abs(frame_data_upper), grid_idx_frac[FOV_valid_index]),
+                        torch.lerp(torch.abs(frame_data_lower), torch.abs(frame_data_upper), grid_idx_frac[FOV_valid_index]) * bf_mask[FOV_valid_index],
                         torch.lerp(torch.angle(frame_data_lower), torch.angle(frame_data_upper), grid_idx_frac[FOV_valid_index])
                     )
-                    
+
                     # Calculate the phases and attenuations for the radar heatmap
                     k0 = 2 * torch.pi / self.BPObj["lambda"]
                     phases = torch.exp(-1j * k0 * 2 * distances[FOV_valid_index])
@@ -204,7 +210,7 @@ class BPProcessor:
         """
 
         # Resample the data in chirp level
-        datas = datas[:, :, 0:1, :, :]
+        # datas = datas[:, :, 0:1, :, :]
 
         # Resample the data in time level
         start_index, end_index = 0, int(self.BPObj["frame_rate"] * (max(timestamps) - min(timestamps) - 1))
@@ -300,21 +306,23 @@ class BPProcessor:
         # return FOV_valid_index.reshape(grid.shape[:3])
         return FOV_valid_index
     
-    def polar_mask(self, grid, position, angle, range_index, heatmap_vec, threshold=0.25):
+    def polar_mask(self, grid, position, angle, range_index, heatmap_vec, bf_weight, threshold=0.25):
         
         """
         Perform Polar Mask on the input data.
 
         Parameters:
-            grid (np.ndarray): The heatmap grid.
-            position (np.ndarray): The position of the radar.
-            angle (np.ndarray): The angle of the radar.
-            range_index (np.ndarray): The range index of the radar.
-            heatmap_vec (np.ndarray): The average heatmap of the radar.
+            grid (torch.Tensor): The heatmap grid.
+            position (torch.Tensor): The position of the radar.
+            angle (torch.Tensor): The angle of the radar.
+            range_index (torch.Tensor): The range index of the radar.
+            heatmap_vec (torch.Tensor): The average heatmap of the radar.
+            bf_weight (torch.Tensor): The Beamforming Mask of the radar.
             threshold (float): The threshold to perform Polar Mask.
 
         Returns:
-            polar mask (np.ndarray): The output data after Polar Mask.
+            polar_mask (torch.Tensor): The Polar Valid Mask.
+            bf_mask (torch.Tensor): The Beamforming Weight Mask.
         """
 
         xx, yy, zz = grid[:, :, :, 0], grid[:, :, :, 1], grid[:, :, :, 2]
@@ -339,8 +347,12 @@ class BPProcessor:
             )
         )
 
-        # # Calculate the Polar Mask
-        # heatmap_vec = torch.log10(1 + heatmap_vec / torch.max(heatmap_vec))
+        # Calculate the Beamforming Mask
+        angle_idx = ((angle_azi - self.angles[0]) / (self.angles[1] - self.angles[0])).long().clamp(0, len(self.angles) - 1)
+        range_idx = range_idxs_vec.long().clamp(0, len(self.angles) - 1)
+        bf_mask = bf_weight[range_idx, angle_idx]
+        
+        # Calculate the Polar Mask
         heatmap_vec = torch.log10(1 + torch.abs(heatmap_vec / torch.max(torch.abs(heatmap_vec))))
         valid_mask = heatmap_vec > threshold
         
@@ -354,9 +366,9 @@ class BPProcessor:
             min_ranges.scatter_reduce_(0, angle_indices, range_idxs_vec[valid_mask].float(), reduce='amin')
 
             angle_min_range = min_ranges[(angle_azi_rounded - angle_min).long()]
-            POLAR_valid_index &= ~(range_idxs_vec > angle_min_range)       
+            POLAR_valid_index &= ~(range_idxs_vec > angle_min_range)
 
-        return POLAR_valid_index
+        return POLAR_valid_index, bf_mask
 
     def convert_quaternion(self,q1):
         """
@@ -381,7 +393,41 @@ class BPProcessor:
         q2 = r2.as_quat()
 
         return q2
-    
+
+    def beamforming_mask(self, input, weights=[0.1, 1.5]):
+        """
+        Perform Beamforming Mask on the input data.
+        
+        Parameters:
+            radar_inputdata (torch.Tensor): The input data from Range FFT.
+
+        Returns:
+            bf_mask (torch.Tensor): The output data after Beamforming Mask.
+        """
+
+        # Calculate the virtual positions
+        tx_positions = torch.tensor(self.BPObj["TX_position"], device=self.device) * self.BPObj["antDis"]
+        rx_positions = torch.tensor(self.BPObj["RX_position"], device=self.device) * self.BPObj["antDis"]
+        virtual_positions = (tx_positions.unsqueeze(0) + rx_positions.unsqueeze(1)).view(-1, 3)
+        
+        # Calculate the virtual data
+        radar_data = input.clone().to(torch.complex64)
+        num_virtual, virtual_x = virtual_positions.shape[0], virtual_positions[:, 0]
+        virtual_data = radar_data.view(radar_data.shape[0], radar_data.shape[1], num_virtual).mean(dim=1)
+
+        # Perform Beamforming Algorithm
+        sin_theta, k = torch.sin(torch.deg2rad(self.angles)), 2 * torch.pi / self.BPObj['lambda']
+        steering_vector = torch.exp(-1j * k * virtual_x.unsqueeze(1) * sin_theta.unsqueeze(0))
+        beamform_results = torch.abs(torch.matmul(virtual_data, steering_vector))
+
+        # Generate the Beamforming Mask
+        beamform_mean, beamform_std = torch.mean(beamform_results, dim=1, keepdim=True), torch.std(beamform_results, dim=1, keepdim=True)
+        bf_mask = torch.sigmoid((beamform_results - beamform_mean) / (beamform_std + 1e-6))    
+        bf_mask = bf_mask * (weights[1] - weights[0]) + weights[0]
+
+        # Return the bf_mask
+        return bf_mask
+
     def bp_to_pcd(self, bp_output, threshold=0.1):
         """
         Convert the Back Projection output to Point Cloud Data.
