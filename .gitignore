@@ -5,6 +5,7 @@
 *.png
 *.mat
 *.npy
+*.gif
 *.DS_Store
 
 # Byte-compiled / optimized / DLL files

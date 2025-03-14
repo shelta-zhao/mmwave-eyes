@@ -80,9 +80,7 @@ class BPProcessor:
 
         # Perform Peak Detection
         # bp_output = self.adaptive_peak_detect(torch.abs(bp_output), window_size=3, quantile=0.5)
-        tmp = bp_output.reshape((2000, 1000))
-        
-        aaaa
+
         # Return the output data from Back Projection Algorithm
         return np.log10(1 + np.abs(bp_output))
     

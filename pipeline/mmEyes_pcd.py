@@ -13,6 +13,7 @@ import shutil
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Slerp, Rotation
 
@@ -101,6 +102,7 @@ class mmEyesPCD:
             # Perform mmEyes PCD pipeline for each frame
             global_radar_pcd, global_lidar_pcd, global_trajectory = [], [], []
             radar_ele_all = radarEyesLoader.load_data(os.path.join(self.data_root, adc_data['prefix']), sensor='radar_ele')[radar_ele_sync['paths']]
+            # df_processor.distribute_filter(global_radar_pcd)
             for frame_idx in tqdm(range(len(radar_azi_sync['paths'])), desc="Processing frames", ncols=90):
 
                 # Load data of different sensors                
@@ -111,13 +113,20 @@ class mmEyesPCD:
                 radar_azi_pcd = df_processor.run(radar_azi, config_azi)
               
                 if frame_idx != 0 and (frame_idx + 1) % self.slider_window == 0:
-                    
-                    print(np.vstack(global_radar_pcd).shape)
-                    print(np.vstack(global_lidar_pcd).shape)
-                    self.pcd_display(np.vstack(global_radar_pcd))
-                    self.pcd_display(np.vstack(global_lidar_pcd))
-                    self.trajectory_display(np.vstack(global_trajectory))
-                    aaaaa
+                    self.pcd_animate(global_radar_pcd, pause=1, BEV=True, save_path="radar_pcd.gif")
+                    aaa
+                    # tmp = np.vstack(global_radar_pcd)
+                    # np.save(f"tmp_radar_pcd_{frame_idx}.npy", tmp)
+                    # tmp2 = np.vstack(global_lidar_pcd)
+                    # np.save(f"tmp_lidar_pcd_{frame_idx}.npy", tmp2)
+                    # asaaa
+                    # df_processor.distribute_filter(np.vstack(global_radar_pcd))
+                    # print(np.vstack(global_radar_pcd).shape)
+                    # print(np.vstack(global_lidar_pcd).shape)
+                    # self.pcd_display(np.vstack(global_radar_pcd))
+                    # self.pcd_display(np.vstack(global_lidar_pcd))
+                    # self.trajectory_display(np.vstack(global_trajectory))
+                    # aaaaa
 
                     # Perform Polar Back Projection
                     start_timestamp, end_timestamp = radar_azi_sync['timestamps'][frame_idx - self.slider_window + 1], radar_azi_sync['timestamps'][frame_idx]
@@ -129,15 +138,15 @@ class mmEyesPCD:
                     pass
                 
                 # Perfrom PCD Filtering
-                radar_azi_pcd = self.pcd_filter(radar_azi_pcd)
-                lidar_pcd = self.pcd_filter(lidar_pcd)
+                # radar_azi_pcd = self.pcd_filter(radar_azi_pcd)
+                # lidar_pcd = self.pcd_filter(lidar_pcd)
 
-                # Perform Cooridnate Transformation
+                # # Perform Cooridnate Transformation
                 angle_radar, position_radar = synchronized_data['radar_azi']['angles'][frame_idx], synchronized_data['radar_azi']['positions'][frame_idx]
                 angle_lidar, position_lidar = synchronized_data['lidar']['angles'][frame_idx], synchronized_data['lidar']['positions'][frame_idx]
                 transformed_radar = self.transform_point_cloud(radar_azi_pcd, position_radar, angle_radar, transform_flag=("ZED" not in adc_data['camera']))
                 transformed_lidar = self.transform_point_cloud(lidar_pcd, position_lidar, angle_lidar, transform_flag=("ZED" not in adc_data['camera']))
-                
+
                 # Merge the global features
                 global_trajectory.append(radar_azi_sync['positions'][frame_idx])
                 global_radar_pcd.append(transformed_radar)
@@ -315,7 +324,7 @@ class mmEyesPCD:
         # Display the plot
         plt.show()
 
-    def pcd_display(self, point_cloud_data):
+    def pcd_display(self, point_cloud_data, BEV=False):
         """
         Display the point cloud data.
 
@@ -347,5 +356,52 @@ class mmEyesPCD:
         ax.set_zlabel('Z (meters)')
         ax.set_title('3D Point Cloud')
 
+        # Set the view angle
+        if BEV:
+            ax.view_init(elev=90, azim=-90)
+            ax.set_zticks([])
+
         # Display the plot
         plt.show()
+
+    def pcd_animate(self, global_pcd, pause=0.5, BEV=False, save_path=None):
+        """
+        Display the point cloud data with dynamic updates.
+
+        Parameters:
+            point_cloud_data (list of np.ndarray): List of point cloud frames to be displayed sequentially.
+            BEV (bool): If True, display in Bird's Eye View (top-down).
+            pause_time (float): Pause duration between frames.
+        """
+
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_xlabel('X (meters)')
+        ax.set_ylabel('Y (meters)')
+        ax.set_zlabel('Z (meters)')
+        
+
+        # Define the update function
+        def update(frame_idx):
+            ax.clear()
+            pcd = global_pcd[frame_idx]
+            x, y, z, instance = pcd[:, 0], pcd[:, 1], pcd[:, 2], pcd[:, 3]
+            scatter = ax.scatter(x, y, z, c=instance, cmap='viridis', s=20, alpha=0.8)
+            ax.set_xlim(-8, 8)
+            ax.set_ylim(0, 8)
+            ax.set_title(f'3D Point Cloud Data : Frame {frame_idx}') 
+
+            if BEV:
+                ax.view_init(elev=90, azim=-90)
+                ax.set_zticks([])
+
+            return scatter
+        
+        # Create the animation
+        ani = animation.FuncAnimation(fig, update, frames=len(global_pcd), interval=pause * 1000, blit=False, repeat=False)
+        
+        # Display ans Save the animation
+        plt.show()
+        if save_path:
+            ani.save(save_path, writer='pillow', fps=int(1 / pause))
+
